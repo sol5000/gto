@@ -80,7 +80,7 @@ if submit:
     try:
         hero  = cards(hero_raw)
         board = cards(board_raw)
-    except SystemExit as e:
+    except ValueError as e:
         st.error(str(e)); st.stop()
 
     if len(hero) != 2:

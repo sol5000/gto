@@ -50,6 +50,7 @@ pip install cython streamlit eval7 numpy plotly
 
 Run QuickGTO interactively in a terminal:
 
+
 ```bash
 python gto_helper.py
 # or
