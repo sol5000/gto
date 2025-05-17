@@ -5,7 +5,7 @@ Features
 • Villain range %, equity histogram, CSV logging
 • Game‑flow loop: Continue / New game / Exit
 """
-import csv, json, sys, math
+import csv, json, math
 from datetime import datetime
 from collections import Counter
 import eval7
@@ -27,20 +27,20 @@ def cards(txt: str):
         raw = txt.split()
     else:  # chunk every 2 chars
         if len(txt) % 2:
-            sys.exit("Card string length must be even (pairs of chars).")
+            raise ValueError("Card string length must be even (pairs of chars).")
         raw = [txt[i:i+2] for i in range(0, len(txt), 2)]
     # normalize and validate
     toks = []
     for t in raw:
         if len(t)!=2:
-            sys.exit(f"Bad card: {t}")
+            raise ValueError(f"Bad card: {t}")
         rank, suit = t[0].upper(), t[1].lower()
         if rank=='0': rank='T'
         if rank not in RANKS or suit not in SUITS:
-            sys.exit(f"Bad card: {t}")
+            raise ValueError(f"Bad card: {t}")
         toks.append(rank + suit)
     if len(toks) != len(set(toks)):
-        sys.exit("Duplicate cards detected.")
+        raise ValueError("Duplicate cards detected.")
     return [eval7.Card(t) for t in toks]
 
 
@@ -128,30 +128,53 @@ def log_row(d):
 # ── main loop ───────────────────────────────────────
 
 def prompt_bets():
-    pot = float(input("Current pot: "))
-    bet = float(input("Facing bet: "))
-    stack = float(input("Your stack: "))
+    try:
+        pot = float(input("Current pot: "))
+        bet = float(input("Facing bet: "))
+        stack = float(input("Your stack: "))
+    except ValueError as e:
+        raise ValueError("Bad numeric value") from e
     pref = input("Raise size (0.5 / 1 / 2 / shove): ")
-    if pref not in RAISE_SIZES: sys.exit("Bad raise size.")
+    if pref not in RAISE_SIZES:
+        raise ValueError("Bad raise size")
     return pot, bet, stack, pref
 
 def play():
     print("Welcome to GTO Helper – advanced edition\n")
-    villains = int(input("Opponents (2–9): "))
-    rng_pct = float(input("Villain range % (0=random): "))
+    while True:
+        try:
+            villains = int(input("Opponents (2–9): "))
+            if not 2 <= villains <= 9:
+                raise ValueError("Opponents must be between 2 and 9")
+            rng_pct = float(input("Villain range % (0=random): "))
+            break
+        except ValueError as e:
+            print(f"Error: {e}\n")
     hero = board = None
     while True:
-        if hero is None:
-            hero = cards(input("Hero hand (H/S/D/C): "))
-        if board is None:
-            board = cards(input("Board cards (0/3/4/5): "))
-        mode = input("Mode strict/bets [s/b]: ").lower().strip()
-        if mode.startswith('b'):
-            pot, bet, stack, pref = prompt_bets()
-            mode = "bets"
-        else:
-            mode = "strict"
-        eq, hist = equity(hero, board, villains, rng_pct)
+        try:
+            if hero is None:
+                hero = cards(input("Hero hand (H/S/D/C): "))
+                if len(hero) != 2:
+                    raise ValueError("Hero hand must be exactly 2 cards")
+            if board is None:
+                board = cards(input("Board cards (0/3/4/5): "))
+                if len(board) not in (0, 3, 4, 5):
+                    raise ValueError("Board must be 0, 3, 4, or 5 cards")
+            mode = input("Mode strict/bets [s/b]: ").lower().strip()
+            if mode.startswith('b'):
+                pot, bet, stack, pref = prompt_bets()
+                mode = "bets"
+            else:
+                mode = "strict"
+            eq, hist = equity(hero, board, villains, rng_pct)
+        except ValueError as e:
+            print(f"Error: {e}. Restarting current hand.\n")
+            hero = board = None
+            continue
+        except KeyboardInterrupt:
+            print("\nExiting.")
+            break
         ts = datetime.now().isoformat()
         if mode == "strict":
             act = strict_action(eq)
