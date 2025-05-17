@@ -1,6 +1,6 @@
-# GTO Helper
+# QuickGTO
 
-GTO Helper is a command line and Streamlit GUI tool that assists with poker
+QuickGTO is a open source poker command line and Streamlit GUI tool that assists with poker
 decisions using Monte Carlo equity simulations. It supports a quick, textual
 interface and an interactive GUI, keeping a CSV history of your sessions.
 
@@ -48,7 +48,8 @@ pip install cython streamlit eval7 numpy plotly
 
 ### Command Line
 
-Run the helper interactively in a terminal:
+Run QuickGTO interactively in a terminal:
+
 
 ```bash
 python gto_helper.py
