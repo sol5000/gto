@@ -1,0 +1,7 @@
+[theme]
+base             = "dark"           # keeps dark center panel
+primaryColor     = "#FF4B4B"        # sliders / buttons
+backgroundColor  = "#202225"        # sidebar background
+secondaryBackgroundColor = "#2B2F33" # center background
+textColor        = "#F0F0F0"        # main text
+font             = "sans serif"
