@@ -59,7 +59,7 @@ python3 gto_helper.py
 
 You will be prompted for:
 
-1. **Opponents** – number of villains (2–9).
+1. **Opponents** – number of villains (1–9). Enter `1` for heads‑up mode.
 2. **Villain range %** – e.g. `0` for random hands, `20` for top 20%.
 3. **Hero hand** – exactly two cards, spaced (`Ah Ks`) or concatenated (`AhKs`).
 4. **Board cards** – 0, 3, 4 or 5 cards in the same format.

@@ -45,7 +45,9 @@ with st.sidebar.form("config"):
     board_text = st.text_input("Quick board entry (e.g. 7c8d9s)")
     board_pick = st.multiselect("Board picker (0–5)", [label(c) for c in CARD_CODES], max_selections=5)
 
-    villains   = st.slider("Opponents", 2, 9, 3)
+    villains   = st.slider("Opponents", 1, 9, 3)
+    if villains == 1:
+        st.markdown("**Heads‑up mode**")
     range_pct  = st.slider("Villain range %", 0, 50, 0)
 
     mode = st.radio("Mode", ["Strict", "Bets"])
