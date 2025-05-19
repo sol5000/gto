@@ -21,6 +21,8 @@ from gto_helper import (
     log_row,
     SUITS,
     RANKS,
+    load_range_file,
+    PRESET_SCENARIOS,
 )
 
 # ── card utilities ──────────────────────────────────────────────────────────
@@ -32,23 +34,34 @@ def label(code):
     return f"{code[0]}{SUIT_EMOJI[code[1]]}"
 
 # ── sidebar form ────────────────────────────────────────────────────────────
+screen = st.sidebar.radio("Screen", ["Simulation", "Training"], key="screen")
+example_choice = st.sidebar.selectbox("Example", list(PRESET_SCENARIOS.keys()), key="ex_select")
+
+def load_example():
+    hero_raw, board_raw = PRESET_SCENARIOS[example_choice]
+    st.session_state.hero_text = hero_raw
+    st.session_state.board_text = board_raw
+    st.toast(f"Loaded example '{example_choice}'")
+
+if st.sidebar.button("Load example scenario"):
+    load_example()
+
 with st.sidebar.form("config"):
     st.header("GTO Helper settings")
 
     # Hero
     st.markdown("#### Hero hand (enter text OR pick 2 cards)")
-    hero_text = st.text_input("Quick hero entry (e.g. AhKs)")
+    hero_text = st.text_input("Quick hero entry (e.g. AhKs)", key="hero_text")
     hero_pick = st.multiselect("Hero picker (max 2)", [label(c) for c in CARD_CODES], max_selections=2)
 
     # Board
     st.markdown("#### Board cards")
-    board_text = st.text_input("Quick board entry (e.g. 7c8d9s)")
+    board_text = st.text_input("Quick board entry (e.g. 7c8d9s)", key="board_text")
     board_pick = st.multiselect("Board picker (0–5)", [label(c) for c in CARD_CODES], max_selections=5)
 
-    villains   = st.slider("Opponents", 1, 9, 3)
-    if villains == 1:
-        st.markdown("**Heads‑up mode**")
+    villains   = st.slider("Opponents", 2, 9, 3)
     range_pct  = st.slider("Villain range %", 0, 50, 0)
+    range_file = st.file_uploader("Custom range file", type="txt")
 
     mode = st.radio("Mode", ["Strict", "Bets"])
     if mode == "Bets":
@@ -75,14 +88,14 @@ def merge_inputs(text: str, picks: list[str]):
     return ""
 
 # ── run simulation if submitted --------------------------------------------
-if submit:
+if screen == "Simulation" and submit:
     hero_raw  = merge_inputs(hero_text, hero_pick)
     board_raw = merge_inputs(board_text, board_pick)
 
     try:
         hero  = cards(hero_raw)
         board = cards(board_raw)
-    except ValueError as e:
+    except SystemExit as e:
         st.error(str(e)); st.stop()
 
     if len(hero) != 2:
@@ -90,7 +103,13 @@ if submit:
     if len(board) not in (0,3,4,5):
         st.error("Board must be 0, 3, 4, or 5 cards."); st.stop()
 
-    eq, hist = equity(hero, board, villains, range_pct)
+    rng_custom = None
+    if range_file is not None:
+        try:
+            rng_custom = load_range_file(range_file)
+        except Exception as e:
+            st.error(str(e)); st.stop()
+    eq, hist = equity(hero, board, villains, range_pct, rng_custom)
 
     if mode == "Strict":
         act = strict_action(eq)
@@ -133,13 +152,23 @@ if submit:
     if Path("gto_history.csv").exists():
         st.download_button("Download session CSV", open("gto_history.csv","rb").read(),"gto_history.csv")
 
-# ── Theme hint --------------------------------------------------------------
-st.sidebar.markdown("""
-*Theme override:* create `.streamlit/config.toml`:
-```toml
-[theme]
-primaryColor = "#FF4B4B"
-backgroundColor = "#0E1117"
-textColor      = "#FAFAFA"
-```
-""")
+if screen == "Training":
+    st.header("Training mode")
+    if "train_hero" not in st.session_state or st.button("New training hand"):
+        import eval7
+        deck = eval7.Deck(); deck.shuffle()
+        st.session_state.train_hero = deck.deal(2)
+        st.session_state.train_board = deck.deal(3)
+    hero = st.session_state.train_hero
+    board = st.session_state.train_board
+    st.write("Hero:", " ".join(str(c) for c in hero))
+    st.write("Board:", " ".join(str(c) for c in board))
+    choice = st.radio("Your action?", ["CHECK", "RAISE", "FOLD"], horizontal=True, key="train_choice")
+    if st.button("Submit answer"):
+        eq, _ = equity(hero, board, villains, range_pct)
+        best = strict_action(eq)
+        if choice.upper() == best:
+            st.success("Correct!")
+        else:
+            st.error(f"Incorrect. Best action: {best}")
+        st.write(f"Equity was {eq:.2%}")

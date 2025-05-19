@@ -5,7 +5,8 @@ Features
 • Villain range %, equity histogram, CSV logging
 • Game‑flow loop: Continue / New game / Exit
 """
-import csv, json, math
+import csv, json, math, sys
+from pathlib import Path
 from datetime import datetime
 from collections import Counter
 import eval7
@@ -15,6 +16,32 @@ except ImportError:
     np = None
 
 SUITS, RANKS = "shdc", "23456789TJQKA"
+
+DEFAULTS_PATH = Path.home() / ".gto_defaults.json"
+
+def load_defaults():
+    if DEFAULTS_PATH.exists():
+        try:
+            return json.loads(DEFAULTS_PATH.read_text())
+        except Exception:
+            return {}
+    return {}
+
+def save_defaults(d):
+    try:
+        DEFAULTS_PATH.write_text(json.dumps(d))
+    except Exception:
+        pass
+
+COLORS = {
+    "green": "\033[92m",
+    "red": "\033[91m",
+    "yellow": "\033[93m",
+    "end": "\033[0m",
+}
+
+def color(text: str, c: str) -> str:
+    return f"{COLORS.get(c,'')}" + text + COLORS["end"]
 
 # ── helpers ──────────────────────────────────────────
 
@@ -57,10 +84,49 @@ def top_range(p):
     keep = math.ceil(169 * p / 100)
     return set(k for k, _ in zip(sorted(ORDER, key=ORDER.get, reverse=True), range(keep)))
 
+def load_range_file(path_or_file):
+    """Load custom range from a text file of two-card combos."""
+    rng = set()
+    if hasattr(path_or_file, "read"):
+        raw = path_or_file.read()
+        text = raw.decode("utf-8") if hasattr(raw, "decode") else raw
+    else:
+        p = Path(path_or_file)
+        if not p.exists():
+            raise ValueError(f"Range file not found: {path_or_file}")
+        text = p.read_text()
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            cs = cards(line)
+        except ValueError:
+            continue
+        if len(cs) != 2:
+            continue
+        r1 = max(cs[0].rank_char, cs[1].rank_char)
+        r2 = min(cs[0].rank_char, cs[1].rank_char)
+        s = cs[0].suit == cs[1].suit
+        rng.add((r1, r2, s))
+    if not rng:
+        raise ValueError("No valid combos in range file")
+    return rng
+
+PRESET_SCENARIOS = {
+    "flush_draw": ("AhKh", "QhTh2c"),
+    "set_vs_draw": ("9c9d", "JdTd9h"),
+}
+
 # ── equity simulation ─────────────────────────────────
 
-def equity(hero, board, villains, pct, iters=25000):
-    rng = top_range(pct) if pct > 0 else None
+def equity(hero, board, villains, pct=None, custom=None, iters=25000):
+    """Simulate equity.
+
+    pct    -- top X percent of hands to keep (ignored if ``custom`` provided)
+    custom -- optional set of (r1, r2, suited) tuples defining a range
+    """
+    rng = custom if custom is not None else (top_range(pct) if (pct or 0) > 0 else None)
     wins, buckets = 0.0, Counter()
     for _ in range(iters):
         deck = eval7.Deck(); [deck.cards.remove(c) for c in hero + board]; deck.shuffle()
@@ -140,19 +206,57 @@ def prompt_bets():
     return pot, bet, stack, pref
 
 def play():
+    if any(arg in sys.argv for arg in ("-h", "--help", "help")):
+        print("""\nQuickGTO command line usage:\n\n"
+              "Run: python gto_helper.py\n"
+              "You will be prompted for opponents, range (percent or path to\n"
+              "custom range file), your hand and board cards. Example:\n"
+              "  Opponents (1-9) [2]: 3\n"
+              "  Villain range % or file [0]: 20\n"
+              "  Hero hand (H/S/D/C): AhKs\n"
+              "  Board cards (0/3/4/5): 7c8d9s\n"
+              "  Mode strict/bets [s/b]: s\n"
+              "Use Ctrl+C to exit at any time.""")
+        return
+
+    defaults = load_defaults()
     print("Welcome to GTO Helper – advanced edition\n")
     while True:
         try:
-            villains = int(input("Opponents (1–9): "))
+            v_in = input(f"Opponents (1–9) [{defaults.get('villains',2)}]: ")
+            villains = int(v_in) if v_in.strip() else int(defaults.get("villains", 2))
             if not 1 <= villains <= 9:
                 raise ValueError("Opponents must be between 1 and 9")
             if villains == 1:
                 print("Heads‑up mode enabled")
-            rng_pct = float(input("Villain range % (0=random): "))
-            break
+                r_in = input(f"Villain range % or file [{defaults.get('range','0')}]: ")
+                if not r_in.strip():
+                    r_in = str(defaults.get("range", "0"))
+                if Path(r_in).exists():
+                    rng_pct = None
+                    rng_custom = load_range_file(r_in)
+                else:
+                    rng_pct = float(r_in)
+                    rng_custom = None
+                if input("Save as defaults? [y/N]: ").lower().startswith('y'):
+                    save_defaults({"villains": villains, "range": r_in})
+                break
         except ValueError as e:
-            print(f"Error: {e}\n")
+            print(color(f"Error: {e}", "red") + "\n")
     hero = board = None
+    if input("Load example scenario? [y/N]: ").lower().startswith('y'):
+        print("Available examples:")
+        for i, name in enumerate(PRESET_SCENARIOS, 1):
+            print(f"  {i}. {name}")
+        try:
+            sel = int(input("Choose example #: ")) - 1
+            name = list(PRESET_SCENARIOS.keys())[sel]
+        except Exception:
+            print(color("Bad selection. Using first example.", "red"))
+            name = list(PRESET_SCENARIOS.keys())[0]
+        hero_raw, board_raw = PRESET_SCENARIOS[name]
+        hero = cards(hero_raw)
+        board = cards(board_raw)
     while True:
         try:
             if hero is None:
@@ -169,7 +273,7 @@ def play():
                 mode = "bets"
             else:
                 mode = "strict"
-            eq, hist = equity(hero, board, villains, rng_pct)
+                eq, hist = equity(hero, board, villains, rng_pct, rng_custom)
         except ValueError as e:
             print(f"Error: {e}. Restarting current hand.\n")
             hero = board = None
@@ -182,6 +286,7 @@ def play():
             act = strict_action(eq)
             res = {"equity": round(eq,3), "histogram": hist, "recommended_action": act}
             print(json.dumps(res, indent=2))
+            print(color(f"Recommended: {act}", "green"))
             log_row({"ts":ts,"hand":" ".join(str(c) for c in hero),"board":" ".join(str(c) for c in board),
                      "villains":villains,"range":rng_pct,"eq":round(eq,3),"act":act,
                      "ev_fold":0,"ev_call":0,"ev_raise":0})
@@ -191,6 +296,7 @@ def play():
                    "EV_fold":round(evf,2),"EV_call":round(evc,2),"EV_raise":round(evr,2)}
             res.update(mv)
             print(json.dumps(res, indent=2))
+            print(color(f"Chosen: {act}", "yellow"))
             log_row({"ts":ts,"hand":" ".join(str(c) for c in hero),"board":" ".join(str(c) for c in board),
                      "villains":villains,"range":rng_pct,"eq":round(eq,3),"act":act,
                      "ev_fold":round(evf,2),"ev_call":round(evc,2),"ev_raise":round(evr,2)})
