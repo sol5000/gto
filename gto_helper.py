@@ -143,9 +143,11 @@ def play():
     print("Welcome to GTO Helper – advanced edition\n")
     while True:
         try:
-            villains = int(input("Opponents (2–9): "))
-            if not 2 <= villains <= 9:
-                raise ValueError("Opponents must be between 2 and 9")
+            villains = int(input("Opponents (1–9): "))
+            if not 1 <= villains <= 9:
+                raise ValueError("Opponents must be between 1 and 9")
+            if villains == 1:
+                print("Heads‑up mode enabled")
             rng_pct = float(input("Villain range % (0=random): "))
             break
         except ValueError as e:
