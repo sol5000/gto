@@ -19,7 +19,6 @@ except AttributeError:  # older eval7 versions only expose numeric rank
         """Return rank as a single character (e.g. 'A')."""
         return str(self)[0]
 
-    eval7.Card.rank_char = property(_rank_char)
 try:
     import numpy as np
 except ImportError:
