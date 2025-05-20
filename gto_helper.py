@@ -5,11 +5,21 @@ Features
 • Villain range %, equity histogram, CSV logging
 • Game‑flow loop: Continue / New game / Exit
 """
-import csv, json, math, sys
+import csv, json, math, sys, random
 from pathlib import Path
 from datetime import datetime
 from collections import Counter
 import eval7
+
+# ── compatibility shims ----------------------------------------------
+try:
+    _ = eval7.Card("Ah").rank_char  # new versions provide rank_char
+except AttributeError:  # older eval7 versions only expose numeric rank
+    def _rank_char(self):
+        """Return rank as a single character (e.g. 'A')."""
+        return str(self)[0]
+
+    eval7.Card.rank_char = property(_rank_char)
 try:
     import numpy as np
 except ImportError:
@@ -113,6 +123,37 @@ def load_range_file(path_or_file):
         raise ValueError("No valid combos in range file")
     return rng
 
+def load_weighted_range(path_or_file):
+    """Load weighted ranges from a text file ``hand weight`` per line."""
+    data = {}
+    if hasattr(path_or_file, "read"):
+        raw = path_or_file.read()
+        text = raw.decode("utf-8") if hasattr(raw, "decode") else raw
+    else:
+        p = Path(path_or_file)
+        if not p.exists():
+            raise ValueError(f"Range file not found: {path_or_file}")
+        text = p.read_text()
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            combo, w = line.split()
+            weight = float(w)
+            cs = cards(combo)
+            if len(cs) != 2:
+                continue
+            r1 = max(cs[0].rank_char, cs[1].rank_char)
+            r2 = min(cs[0].rank_char, cs[1].rank_char)
+            s = cs[0].suit == cs[1].suit
+            data[(r1, r2, s)] = weight
+        except Exception:
+            continue
+    if not data:
+        raise ValueError("No valid weighted combos in file")
+    return data
+
 PRESET_SCENARIOS = {
     "flush_draw": ("AhKh", "QhTh2c"),
     "set_vs_draw": ("9c9d", "JdTd9h"),
@@ -120,21 +161,19 @@ PRESET_SCENARIOS = {
 
 # ── equity simulation ─────────────────────────────────
 
-def equity(hero, board, villains, pct=None, custom=None, iters=25000):
-    """Simulate equity.
-
-    pct    -- top X percent of hands to keep (ignored if ``custom`` provided)
-    custom -- optional set of (r1, r2, suited) tuples defining a range
-    """
-    rng = custom if custom is not None else (top_range(pct) if (pct or 0) > 0 else None)
+def _simulate(hero, board, villains, rng, weighted, iters):
     wins, buckets = 0.0, Counter()
     for _ in range(iters):
         deck = eval7.Deck(); [deck.cards.remove(c) for c in hero + board]; deck.shuffle()
         opp = []
         while len(opp) < villains:
             a, b = deck.deal(2)
-            if rng:
-                r1, r2, s = max(a.rank_char, b.rank_char), min(a.rank_char, b.rank_char), a.suit == b.suit
+            r1, r2, s = max(a.rank_char, b.rank_char), min(a.rank_char, b.rank_char), a.suit == b.suit
+            if weighted is not None:
+                w = weighted.get((r1, r2, s), 0.0)
+                if random.random() > w:
+                    deck.cards.extend([a, b]); deck.shuffle(); continue
+            elif rng:
                 if (r1, r2, s) not in rng:
                     deck.cards.extend([a, b]); deck.shuffle(); continue
             opp.append([a, b])
@@ -152,6 +191,34 @@ def equity(hero, board, villains, pct=None, custom=None, iters=25000):
             buckets[int((1 / ties) * 10)] += 1
         else:
             buckets[0] += 1
+    return wins, buckets
+
+
+def equity(hero, board, villains, pct=None, custom=None, iters=25000, weighted=None, multiprocess=False):
+    """Simulate equity.
+
+    pct    -- top X percent of hands to keep (ignored if ``custom`` provided)
+    custom -- optional set defining a range
+    weighted -- optional dict mapping combos to weights (0-1)
+    multiprocess -- use multiple processes if True
+    """
+    rng = custom if custom is not None else (top_range(pct) if (pct or 0) > 0 else None)
+    if multiprocess:
+        try:
+            import multiprocessing as mp
+            procs = min(mp.cpu_count(), 4)
+            chunk = iters // procs
+            todo = [chunk + (1 if i < iters % procs else 0) for i in range(procs)]
+            with mp.Pool(procs) as pool:
+                args = [(hero, board, villains, rng, weighted, n) for n in todo]
+                results = pool.starmap(_simulate, args)
+        except Exception:
+            results = [_simulate(hero, board, villains, rng, weighted, iters)]
+    else:
+        results = [_simulate(hero, board, villains, rng, weighted, iters)]
+    wins, buckets = 0.0, Counter()
+    for w, b in results:
+        wins += w; buckets.update(b)
     eq = wins / iters
     hist = (np.bincount([min(k, 9) for k in buckets.elements()], minlength=10) / iters).tolist() if np else [buckets[i]/iters for i in range(10)]
     return eq, hist
@@ -160,6 +227,13 @@ def equity(hero, board, villains, pct=None, custom=None, iters=25000):
 
 def strict_action(eq):
     return "RAISE" if eq >= 0.65 else "CHECK" if eq >= 0.4 else "FOLD"
+
+def equilibrium_solver(hero, board, villains, pct=None, custom=None, iters=10000):
+    """Very naive equilibrium solver using equity as proxy."""
+    eq, _ = equity(hero, board, villains, pct, custom, iters=iters)
+    bet = round(min(max(eq, 0.0), 1.0), 2)
+    check = round(1 - bet, 2)
+    return {"bet_freq": bet, "check_freq": check}
 
 RAISE_SIZES = {"0.5": .5, "1": 1.0, "2": 2.0, "shove": None}
 

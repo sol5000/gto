@@ -12,6 +12,8 @@ interface and an interactive GUI, keeping a CSV history of your sessions.
 - Opponent range percentage filtering.
 - Equity histogram output and CSV logging.
 - Streamlit GUI with card pickers, real‑time validation and Plotly histogram.
+- Mode selector (Basic/Advanced/Equilibrium). Advanced adds adjustable iterations,
+  weighted ranges, multiprocessing and extra charts. Equilibrium runs a simple solver.
 
 ## Requirements
 
@@ -87,6 +89,9 @@ The web interface allows card entry via text or dropdown pickers and shows the
 same results with a Plotly equity distribution graph. The sidebar contains form
 controls and a theme configuration hint. A CSV download button appears after a
 simulation.
+Select **Basic**, **Advanced** or **Equilibrium** mode from the sidebar. Advanced exposes
+extra controls like iteration count and weighted ranges, while Equilibrium runs a
+simple solver demonstration.
 
 ## Strict vs Bets mode
 
