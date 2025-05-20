@@ -27,11 +27,15 @@ except ImportError:
 
 SUITS, RANKS = "shdc", "23456789TJQKA"
 
-# Older versions of ``eval7`` expose ``rank`` but not ``rank_char``. This
-# helper returns the first character of the card string so code can work
-# consistently regardless of library version.
+
+# Older versions of eval7.Card don't expose a `rank_char` attribute. Rather
+# than monkey-patching the immutable class, provide a helper that extracts the
+# rank from ``str(card)`` when needed.
 def card_rank_char(card: eval7.Card) -> str:
-    return str(card)[0]
+    rc = getattr(card, "rank_char", str(card)[0])
+    rc = rc.upper()
+    return "T" if rc == "0" else rc
+
 
 DEFAULTS_PATH = Path.home() / ".gto_defaults.json"
 
@@ -150,7 +154,6 @@ def load_weighted_range(path_or_file):
             cs = cards(combo)
             if len(cs) != 2:
                 continue
-
             r1 = max(card_rank_char(cs[0]), card_rank_char(cs[1]))
             r2 = min(card_rank_char(cs[0]), card_rank_char(cs[1]))
             s = cs[0].suit == cs[1].suit
