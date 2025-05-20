@@ -22,6 +22,8 @@ from gto_helper import (
     SUITS,
     RANKS,
     load_range_file,
+    load_weighted_range,
+    equilibrium_solver,
     PRESET_SCENARIOS,
 )
 
@@ -36,6 +38,7 @@ def label(code):
 # ── sidebar form ────────────────────────────────────────────────────────────
 screen = st.sidebar.radio("Screen", ["Simulation", "Training"], key="screen")
 example_choice = st.sidebar.selectbox("Example", list(PRESET_SCENARIOS.keys()), key="ex_select")
+ui_level = st.sidebar.radio("Mode", ["Basic", "Advanced", "Equilibrium"], key="ui_level")
 
 def load_example():
     hero_raw, board_raw = PRESET_SCENARIOS[example_choice]
@@ -62,13 +65,23 @@ with st.sidebar.form("config"):
     villains   = st.slider("Opponents", 2, 9, 3)
     range_pct  = st.slider("Villain range %", 0, 50, 0)
     range_file = st.file_uploader("Custom range file", type="txt")
+    weighted_file = None
+    iters = 25000
+    multiproc = False
+    if ui_level == "Advanced":
+        iters = st.number_input("Simulation iterations", 1000, 200000, 25000, step=5000)
+        weighted_file = st.file_uploader("Weighted range file", type="txt")
+        multiproc = st.checkbox("Enable multiprocessing")
 
-    mode = st.radio("Mode", ["Strict", "Bets"])
-    if mode == "Bets":
-        pot   = st.number_input("Current pot", 0.0, step=10.0, value=100.0)
-        bet   = st.number_input("Facing bet", 0.0, step=5.0,  value=20.0)
-        stack = st.number_input("Your stack", 0.0, step=10.0, value=200.0)
-        pref  = st.selectbox("Raise size", list(RAISE_SIZES.keys()), index=1)
+    if ui_level != "Equilibrium":
+        mode = st.radio("Mode", ["Strict", "Bets"])
+        if mode == "Bets":
+            pot   = st.number_input("Current pot", 0.0, step=10.0, value=100.0)
+            bet   = st.number_input("Facing bet", 0.0, step=5.0,  value=20.0)
+            stack = st.number_input("Your stack", 0.0, step=10.0, value=200.0)
+            pref  = st.selectbox("Raise size", list(RAISE_SIZES.keys()), index=1)
+    else:
+        mode = "Equilibrium"
     submit = st.form_submit_button("Run simulation")
 
 # ── helper to merge text / picker input -------------------------------------
@@ -109,14 +122,29 @@ if screen == "Simulation" and submit:
             rng_custom = load_range_file(range_file)
         except Exception as e:
             st.error(str(e)); st.stop()
-    eq, hist = equity(hero, board, villains, range_pct, rng_custom)
+    weighted_rng = None
+    if weighted_file is not None:
+        try:
+            weighted_rng = load_weighted_range(weighted_file)
+        except Exception as e:
+            st.error(str(e)); st.stop()
 
-    if mode == "Strict":
-        act = strict_action(eq)
+    if mode == "Equilibrium":
+        result = equilibrium_solver(hero, board, villains, range_pct, rng_custom)
+        st.subheader("Equilibrium frequencies")
+        st.json(result)
+        eq, hist = equity(hero, board, villains, range_pct, rng_custom, iters=iters)
+        act = "N/A"
         ev_fold = ev_call = ev_raise = 0
         extra = {}
     else:
-        act, ev_fold, ev_call, ev_raise, extra = decide_bets(eq, pot, bet, stack, pref)
+        eq, hist = equity(hero, board, villains, range_pct, rng_custom, iters=iters, weighted=weighted_rng, multiprocess=multiproc)
+        if mode == "Strict":
+            act = strict_action(eq)
+            ev_fold = ev_call = ev_raise = 0
+            extra = {}
+        else:
+            act, ev_fold, ev_call, ev_raise, extra = decide_bets(eq, pot, bet, stack, pref)
 
     # ── show results --------------------------------------------------------
     col1, col2 = st.columns(2)
@@ -129,6 +157,10 @@ if screen == "Simulation" and submit:
         df = pd.DataFrame({"bucket": [f"{i*10}-{(i+1)*10}%" for i in range(10)], "freq": hist})
         fig = px.bar(df, x="bucket", y="freq", title="Equity distribution", labels={"bucket":"Equity %","freq":"Frequency"})
         st.plotly_chart(fig, use_container_width=True)
+        if ui_level == "Advanced":
+            df["cum"] = df["freq"].cumsum()
+            fig2 = px.line(df, x="bucket", y="cum", title="Cumulative equity")
+            st.plotly_chart(fig2, use_container_width=True)
 
     # tooltips for transparency
     st.help(strict_action)
