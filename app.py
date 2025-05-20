@@ -186,21 +186,3 @@ if screen == "Simulation" and submit:
 
 if screen == "Training":
     st.header("Training mode")
-    if "train_hero" not in st.session_state or st.button("New training hand"):
-        import eval7
-        deck = eval7.Deck(); deck.shuffle()
-        st.session_state.train_hero = deck.deal(2)
-        st.session_state.train_board = deck.deal(3)
-    hero = st.session_state.train_hero
-    board = st.session_state.train_board
-    st.write("Hero:", " ".join(str(c) for c in hero))
-    st.write("Board:", " ".join(str(c) for c in board))
-    choice = st.radio("Your action?", ["CHECK", "RAISE", "FOLD"], horizontal=True, key="train_choice")
-    if st.button("Submit answer"):
-        eq, _ = equity(hero, board, villains, range_pct)
-        best = strict_action(eq)
-        if choice.upper() == best:
-            st.success("Correct!")
-        else:
-            st.error(f"Incorrect. Best action: {best}")
-        st.write(f"Equity was {eq:.2%}")

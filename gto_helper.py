@@ -10,12 +10,32 @@ from pathlib import Path
 from datetime import datetime
 from collections import Counter
 import eval7
+
+# ── compatibility shims ----------------------------------------------
+try:
+    _ = eval7.Card("Ah").rank_char  # new versions provide rank_char
+except AttributeError:  # older eval7 versions only expose numeric rank
+    def _rank_char(self):
+        """Return rank as a single character (e.g. 'A')."""
+        return str(self)[0]
+
+    eval7.Card.rank_char = property(_rank_char)
 try:
     import numpy as np
 except ImportError:
     np = None
 
 SUITS, RANKS = "shdc", "23456789TJQKA"
+
+
+# Older versions of eval7.Card don't expose a `rank_char` attribute. Rather
+# than monkey-patching the immutable class, provide a helper that extracts the
+# rank from ``str(card)`` when needed.
+def card_rank_char(card: eval7.Card) -> str:
+    rc = getattr(card, "rank_char", str(card)[0])
+    rc = rc.upper()
+    return "T" if rc == "0" else rc
+
 
 DEFAULTS_PATH = Path.home() / ".gto_defaults.json"
 
@@ -222,6 +242,7 @@ def equity(hero, board, villains, pct=None, custom=None, iters=25000, weighted=N
 # ── decisions ───────────────────────────────────────
 
 def strict_action(eq):
+
     return "RAISE" if eq >= 0.65 else "CHECK" if eq >= 0.4 else "FOLD"
 
 def equilibrium_solver(hero, board, villains, pct=None, custom=None, iters=10000):
