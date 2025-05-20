@@ -10,6 +10,16 @@ from pathlib import Path
 from datetime import datetime
 from collections import Counter
 import eval7
+
+# ── compatibility shims ----------------------------------------------
+try:
+    _ = eval7.Card("Ah").rank_char  # new versions provide rank_char
+except AttributeError:  # older eval7 versions only expose numeric rank
+    def _rank_char(self):
+        """Return rank as a single character (e.g. 'A')."""
+        return str(self)[0]
+
+    eval7.Card.rank_char = property(_rank_char)
 try:
     import numpy as np
 except ImportError:
