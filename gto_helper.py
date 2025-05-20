@@ -65,6 +65,10 @@ def color(text: str, c: str) -> str:
 
 # ── helpers ──────────────────────────────────────────
 
+def card_rank_char(card) -> str:
+    """Return the rank letter from an eval7.Card, even if missing ``rank_char``."""
+    return getattr(card, "rank_char", str(card)[0])
+
 def cards(txt: str):
     """Parse cards. Accepts spaced ("Ah Ks") or concatenated ("AhKs7c")."""
     txt = txt.strip()
@@ -178,7 +182,9 @@ def _simulate(hero, board, villains, rng, weighted, iters):
         opp = []
         while len(opp) < villains:
             a, b = deck.deal(2)
-            r1, r2, s = max(card_rank_char(a), card_rank_char(b)), min(card_rank_char(a), card_rank_char(b)), a.suit == b.suit
+            r1 = max(card_rank_char(a), card_rank_char(b))
+            r2 = min(card_rank_char(a), card_rank_char(b))
+            s = a.suit == b.suit
             if weighted is not None:
                 w = weighted.get((r1, r2, s), 0.0)
                 if random.random() > w:
