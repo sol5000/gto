@@ -27,6 +27,12 @@ except ImportError:
 
 SUITS, RANKS = "shdc", "23456789TJQKA"
 
+# Older versions of ``eval7`` expose ``rank`` but not ``rank_char``. This
+# helper returns the first character of the card string so code can work
+# consistently regardless of library version.
+def card_rank_char(card: eval7.Card) -> str:
+    return str(card)[0]
+
 DEFAULTS_PATH = Path.home() / ".gto_defaults.json"
 
 def load_defaults():
@@ -115,8 +121,8 @@ def load_range_file(path_or_file):
             continue
         if len(cs) != 2:
             continue
-        r1 = max(cs[0].rank_char, cs[1].rank_char)
-        r2 = min(cs[0].rank_char, cs[1].rank_char)
+        r1 = max(card_rank_char(cs[0]), card_rank_char(cs[1]))
+        r2 = min(card_rank_char(cs[0]), card_rank_char(cs[1]))
         s = cs[0].suit == cs[1].suit
         rng.add((r1, r2, s))
     if not rng:
@@ -144,8 +150,9 @@ def load_weighted_range(path_or_file):
             cs = cards(combo)
             if len(cs) != 2:
                 continue
-            r1 = max(cs[0].rank_char, cs[1].rank_char)
-            r2 = min(cs[0].rank_char, cs[1].rank_char)
+
+            r1 = max(card_rank_char(cs[0]), card_rank_char(cs[1]))
+            r2 = min(card_rank_char(cs[0]), card_rank_char(cs[1]))
             s = cs[0].suit == cs[1].suit
             data[(r1, r2, s)] = weight
         except Exception:
@@ -168,7 +175,7 @@ def _simulate(hero, board, villains, rng, weighted, iters):
         opp = []
         while len(opp) < villains:
             a, b = deck.deal(2)
-            r1, r2, s = max(a.rank_char, b.rank_char), min(a.rank_char, b.rank_char), a.suit == b.suit
+            r1, r2, s = max(card_rank_char(a), card_rank_char(b)), min(card_rank_char(a), card_rank_char(b)), a.suit == b.suit
             if weighted is not None:
                 w = weighted.get((r1, r2, s), 0.0)
                 if random.random() > w:
@@ -226,6 +233,7 @@ def equity(hero, board, villains, pct=None, custom=None, iters=25000, weighted=N
 # ── decisions ───────────────────────────────────────
 
 def strict_action(eq):
+
     return "RAISE" if eq >= 0.65 else "CHECK" if eq >= 0.4 else "FOLD"
 
 def equilibrium_solver(hero, board, villains, pct=None, custom=None, iters=10000):
