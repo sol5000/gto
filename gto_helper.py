@@ -5,7 +5,7 @@ Features
 • Villain range %, equity histogram, CSV logging
 • Game‑flow loop: Continue / New game / Exit
 """
-import csv, json, math, sys, random
+import csv, json, math, sys, random, argparse
 from pathlib import Path
 from datetime import datetime
 from collections import Counter
@@ -26,6 +26,9 @@ except ImportError:
 
 SUITS, RANKS = "shdc", "23456789TJQKA"
 
+# simple in-memory cache for equity calculations
+CACHE = {}
+
 
 # Older versions of eval7.Card don't expose a `rank_char` attribute. Rather
 # than monkey-patching the immutable class, provide a helper that extracts the
@@ -38,17 +41,29 @@ def card_rank_char(card: eval7.Card) -> str:
 
 DEFAULTS_PATH = Path.home() / ".gto_defaults.json"
 
+# default strict-mode thresholds (can be overridden in defaults file)
+STRICT_THRESH = {"raise": 0.65, "check": 0.4}
+
 def load_defaults():
     if DEFAULTS_PATH.exists():
         try:
-            return json.loads(DEFAULTS_PATH.read_text())
+            data = json.loads(DEFAULTS_PATH.read_text())
+            STRICT_THRESH.update({
+                "raise": data.get("strict_raise", STRICT_THRESH["raise"]),
+                "check": data.get("strict_check", STRICT_THRESH["check"]),
+            })
+            return data
         except Exception:
             return {}
     return {}
 
 def save_defaults(d):
     try:
-        DEFAULTS_PATH.write_text(json.dumps(d))
+        existing = load_defaults()
+        existing.update(d)
+        existing["strict_raise"] = STRICT_THRESH["raise"]
+        existing["strict_check"] = STRICT_THRESH["check"]
+        DEFAULTS_PATH.write_text(json.dumps(existing))
     except Exception:
         pass
 
@@ -64,9 +79,6 @@ def color(text: str, c: str) -> str:
 
 # ── helpers ──────────────────────────────────────────
 
-def card_rank_char(card) -> str:
-    """Return the rank letter from an eval7.Card, even if missing ``rank_char``."""
-    return getattr(card, "rank_char", str(card)[0])
 
 def cards(txt: str):
     """Parse cards. Accepts spaced ("Ah Ks") or concatenated ("AhKs7c")."""
@@ -209,7 +221,7 @@ def _simulate(hero, board, villains, rng, weighted, iters):
     return wins, buckets
 
 
-def equity(hero, board, villains, pct=None, custom=None, iters=25000, weighted=None, multiprocess=False):
+def equity(hero, board, villains, pct=None, custom=None, iters=25000, weighted=None, multiprocess=False, show_progress=False):
     """Simulate equity.
 
     pct    -- top X percent of hands to keep (ignored if ``custom`` provided)
@@ -218,6 +230,16 @@ def equity(hero, board, villains, pct=None, custom=None, iters=25000, weighted=N
     multiprocess -- use multiple processes if True
     """
     rng = custom if custom is not None else (top_range(pct) if (pct or 0) > 0 else None)
+
+    key = (
+        tuple(str(c) for c in hero),
+        tuple(str(c) for c in board),
+        villains,
+        pct if custom is None else tuple(sorted(custom)),
+        iters,
+    )
+    if key in CACHE:
+        return CACHE[key]
     if multiprocess:
         try:
             import multiprocessing as mp
@@ -230,19 +252,35 @@ def equity(hero, board, villains, pct=None, custom=None, iters=25000, weighted=N
         except Exception:
             results = [_simulate(hero, board, villains, rng, weighted, iters)]
     else:
-        results = [_simulate(hero, board, villains, rng, weighted, iters)]
+        if show_progress:
+            try:
+                from tqdm import trange
+                rng_iter = trange(iters, desc="Sim")
+            except Exception:
+                rng_iter = range(iters)
+            wins, buckets = 0.0, Counter()
+            for _ in rng_iter:
+                w, b = _simulate(hero, board, villains, rng, weighted, 1)
+                wins += w; buckets.update(b)
+            results = [(wins, buckets)]
+        else:
+            results = [_simulate(hero, board, villains, rng, weighted, iters)]
     wins, buckets = 0.0, Counter()
     for w, b in results:
         wins += w; buckets.update(b)
     eq = wins / iters
     hist = (np.bincount([min(k, 9) for k in buckets.elements()], minlength=10) / iters).tolist() if np else [buckets[i]/iters for i in range(10)]
+    CACHE[key] = (eq, hist)
     return eq, hist
 
 # ── decisions ───────────────────────────────────────
 
 def strict_action(eq):
-
-    return "RAISE" if eq >= 0.65 else "CHECK" if eq >= 0.4 else "FOLD"
+    return (
+        "RAISE"
+        if eq >= STRICT_THRESH["raise"]
+        else "CHECK" if eq >= STRICT_THRESH["check"] else "FOLD"
+    )
 
 def equilibrium_solver(hero, board, villains, pct=None, custom=None, iters=10000):
     """Very naive equilibrium solver using equity as proxy."""
@@ -317,6 +355,9 @@ def play():
             villains = int(v_in) if v_in.strip() else int(defaults.get("villains", 2))
             if not 1 <= villains <= 9:
                 raise ValueError("Opponents must be between 1 and 9")
+            rng_pct = float(defaults.get("range", 0))
+            rng_custom = None
+            r_in = str(rng_pct)
             if villains == 1:
                 print("Heads‑up mode enabled")
                 r_in = input(f"Villain range % or file [{defaults.get('range','0')}]: ")
@@ -327,10 +368,9 @@ def play():
                     rng_custom = load_range_file(r_in)
                 else:
                     rng_pct = float(r_in)
-                    rng_custom = None
-                if input("Save as defaults? [y/N]: ").lower().startswith('y'):
-                    save_defaults({"villains": villains, "range": r_in})
-                break
+            if input("Save as defaults? [y/N]: ").lower().startswith('y'):
+                save_defaults({"villains": villains, "range": r_in})
+            break
         except ValueError as e:
             print(color(f"Error: {e}", "red") + "\n")
     hero = board = None
@@ -402,5 +442,78 @@ def play():
             continue
         break
 
+def run_simulation_from_args(args):
+    hero = cards(args.hero)
+    board = cards(args.board) if args.board else []
+    villains = args.villains or 2
+    if args.v_range:
+        if Path(args.v_range).exists():
+            rng_pct = None
+            rng_custom = load_range_file(args.v_range)
+        else:
+            rng_pct = float(args.v_range)
+            rng_custom = None
+    else:
+        d = load_defaults()
+        rng_pct = float(d.get("range", 0))
+        rng_custom = None
+
+    eq, hist = equity(
+        hero,
+        board,
+        villains,
+        rng_pct,
+        rng_custom,
+        iters=args.iters,
+        multiprocess=args.multiprocess,
+        show_progress=True,
+    )
+
+    if args.mode == "strict":
+        act = strict_action(eq)
+        print(json.dumps({"equity": round(eq,3), "action": act}, indent=2))
+    else:
+        act, evf, evc, evr, mv = decide_bets(
+            eq, args.pot, args.bet, args.stack, args.raise_size
+        )
+        res = {
+            "equity": round(eq,3),
+            "chosen_action": act,
+            "EV_fold": round(evf,2),
+            "EV_call": round(evc,2),
+            "EV_raise": round(evr,2),
+        }
+        res.update(mv)
+        print(json.dumps(res, indent=2))
+
+
 if __name__ == "__main__":
-    play()
+    parser = argparse.ArgumentParser(description="QuickGTO")
+    parser.add_argument("--hero")
+    parser.add_argument("--board", default="")
+    parser.add_argument("--villains", type=int)
+    parser.add_argument("--range", dest="v_range")
+    parser.add_argument("--mode", choices=["strict", "bets"], default="strict")
+    parser.add_argument("--pot", type=float, default=0.0)
+    parser.add_argument("--bet", type=float, default=0.0)
+    parser.add_argument("--stack", type=float, default=0.0)
+    parser.add_argument("--raise-size", default="1", choices=list(RAISE_SIZES.keys()))
+    parser.add_argument("--iters", type=int, default=25000)
+    parser.add_argument("--multiprocess", action="store_true")
+    parser.add_argument("--batch")
+    parser.add_argument("--interactive", action="store_true")
+    args = parser.parse_args()
+
+    if (args.hero or args.batch) and not args.interactive:
+        if args.batch:
+            for line in Path(args.batch).read_text().splitlines():
+                if not line.strip():
+                    continue
+                hero_raw, board_raw = line.split(",")[:2]
+                args.hero = hero_raw.strip()
+                args.board = board_raw.strip()
+                run_simulation_from_args(args)
+        else:
+            run_simulation_from_args(args)
+    else:
+        play()
