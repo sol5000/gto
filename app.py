@@ -18,6 +18,7 @@ from gto_helper import (
     cards,
     equity,
     strict_action,
+    STRICT_THRESH,
     decide_bets,
     RAISE_SIZES,
     log_row,
@@ -36,6 +37,19 @@ CARD_CODES = [r + s for r in RANKS for s in SUITS]
 
 def label(code):
     return f"{code[0]}{SUIT_EMOJI[code[1]]}"
+
+st.markdown(
+    """
+    <style>
+    #banner{position:sticky;top:0;background:#333;padding:4px;color:white;z-index:999;}
+    #footer{position:sticky;bottom:0;background:#222;padding:4px;z-index:999;}
+    .flip{animation:flip 0.5s;}
+    @keyframes flip{from{transform:rotateY(90deg);}to{transform:rotateY(0);}}
+    </style>
+    <div id='banner'>QuickGTO</div>
+    """,
+    unsafe_allow_html=True,
+)
 
 # ── sidebar form ────────────────────────────────────────────────────────────
 screen = st.sidebar.radio("Screen", ["Simulation", "Training"], key="screen")
@@ -64,8 +78,10 @@ with st.sidebar.form("config"):
     board_text = st.text_input("Quick board entry (e.g. 7c8d9s)", key="board_text")
     board_pick = st.multiselect("Board picker (0–5)", [label(c) for c in CARD_CODES], max_selections=5)
 
-    villains   = st.slider("Opponents", 2, 9, 3)
-    range_pct  = st.slider("Villain range %", 0, 50, 0)
+    villains   = st.slider("Opponents", 2, 9, 3, help="Number of villains")
+    range_pct  = st.slider("Villain range %", 0, 50, 0, help="Top percent of hands")
+    game_type = st.selectbox("Game", ["Holdem", "Short Deck"], help="Choose deck type")
+    accuracy = st.selectbox("Solver accuracy", ["Fast","Balanced","Detailed"], index=1, help="Iteration preset")
     range_file = st.file_uploader("Custom range file", type="txt")
     weighted_file = None
     iters = 25000
@@ -76,12 +92,17 @@ with st.sidebar.form("config"):
         multiproc = st.checkbox("Enable multiprocessing")
 
     if ui_level != "Equilibrium":
-        mode = st.radio("Mode", ["Strict", "Bets"])
+        mode = st.radio("Mode", ["Strict", "Bets"], help="Decision algorithm")
+        strict_raise = STRICT_THRESH["raise"]
+        strict_check = STRICT_THRESH["check"]
         if mode == "Bets":
             pot   = st.number_input("Current pot", 0.0, step=10.0, value=100.0)
             bet   = st.number_input("Facing bet", 0.0, step=5.0,  value=20.0)
             stack = st.number_input("Your stack", 0.0, step=10.0, value=200.0)
             pref  = st.selectbox("Raise size", list(RAISE_SIZES.keys()), index=1)
+        else:
+            strict_raise = st.number_input("Raise threshold", 0.0, 1.0, strict_raise, 0.05, help=">= equity to raise")
+            strict_check = st.number_input("Check threshold", 0.0, 1.0, strict_check, 0.05, help=">= equity to check")
     else:
         mode = "Equilibrium"
     submit = st.form_submit_button("Run simulation")
@@ -131,17 +152,21 @@ if screen == "Simulation" and submit:
         except Exception as e:
             st.error(str(e)); st.stop()
 
+    prog = st.progress(0)
     with st.spinner("Running simulation..."):
+        iters = {"Fast":10000,"Balanced":25000,"Detailed":100000}[accuracy]
+        STRICT_THRESH["raise"] = strict_raise if ui_level != "Equilibrium" and mode == "Strict" else STRICT_THRESH["raise"]
+        STRICT_THRESH["check"] = strict_check if ui_level != "Equilibrium" and mode == "Strict" else STRICT_THRESH["check"]
         if mode == "Equilibrium":
-            result = equilibrium_solver(hero, board, villains, range_pct, rng_custom)
+            result = equilibrium_solver(hero, board, villains, range_pct, rng_custom, game=game_type)
             st.subheader("Equilibrium frequencies")
             st.json(result)
-            eq, hist = equity(hero, board, villains, range_pct, rng_custom, iters=iters)
+            eq, hist = equity(hero, board, villains, range_pct, rng_custom, iters=iters, game=game_type)
             act = "N/A"
             ev_fold = ev_call = ev_raise = 0
             extra = {}
         else:
-            eq, hist = equity(hero, board, villains, range_pct, rng_custom, iters=iters, weighted=weighted_rng, multiprocess=multiproc)
+            eq, hist = equity(hero, board, villains, range_pct, rng_custom, iters=iters, weighted=weighted_rng, multiprocess=multiproc, game=game_type)
             if mode == "Strict":
                 act = strict_action(eq)
                 ev_fold = ev_call = ev_raise = 0
@@ -151,6 +176,7 @@ if screen == "Simulation" and submit:
 
 
     # ── show results --------------------------------------------------------
+    prog.progress(1)
     col1, col2 = st.columns(2)
     with col1:
         st.metric("Equity", f"{eq:.2%}")
@@ -188,6 +214,17 @@ if screen == "Simulation" and submit:
     if Path("gto_history.csv").exists():
         st.download_button("Download session CSV", open("gto_history.csv","rb").read(),"gto_history.csv")
 
+with st.container():
+    st.markdown("""<div id='footer'>""", unsafe_allow_html=True)
+    c1, c2, c3 = st.columns(3)
+    run_click = c1.button("Run Simulation", key="run_footer")
+    undo_click = c2.button("Undo", key="undo")
+    redo_click = c3.button("Redo", key="redo")
+    st.markdown("""</div>""", unsafe_allow_html=True)
+
+if run_click:
+    submit = True
+
 if screen == "Training":
     st.header("Training mode")
     if "score" not in st.session_state:
@@ -212,4 +249,20 @@ if screen == "Training":
             st.session_state.score["correct"] += 1
         else:
             st.error(f"Wrong. Best action: {correct}")
-    st.write(f"Score: {st.session_state.score['correct']} / {st.session_state.score['total']}")
+st.write(f"Score: {st.session_state.score['correct']} / {st.session_state.score['total']}")
+
+st.markdown(
+    """
+    <script>
+    document.addEventListener('keydown',function(e){
+        if((e.metaKey||e.ctrlKey) && e.key==='Enter'){
+            document.querySelector('button[data-baseweb="button"]').click();
+        }
+        if((e.metaKey||e.ctrlKey) && e.key==='n'){
+            document.querySelector('button[data-baseweb="button"]').click();
+        }
+    });
+    </script>
+    """,
+    unsafe_allow_html=True,
+)
