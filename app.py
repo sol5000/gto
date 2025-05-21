@@ -8,6 +8,7 @@ Keeps **all** earlier features and adds:
 from datetime import datetime
 from pathlib import Path
 import json
+import random
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -129,22 +130,24 @@ if screen == "Simulation" and submit:
         except Exception as e:
             st.error(str(e)); st.stop()
 
-    if mode == "Equilibrium":
-        result = equilibrium_solver(hero, board, villains, range_pct, rng_custom)
-        st.subheader("Equilibrium frequencies")
-        st.json(result)
-        eq, hist = equity(hero, board, villains, range_pct, rng_custom, iters=iters)
-        act = "N/A"
-        ev_fold = ev_call = ev_raise = 0
-        extra = {}
-    else:
-        eq, hist = equity(hero, board, villains, range_pct, rng_custom, iters=iters, weighted=weighted_rng, multiprocess=multiproc)
-        if mode == "Strict":
-            act = strict_action(eq)
+    with st.spinner("Running simulation..."):
+        if mode == "Equilibrium":
+            result = equilibrium_solver(hero, board, villains, range_pct, rng_custom)
+            st.subheader("Equilibrium frequencies")
+            st.json(result)
+            eq, hist = equity(hero, board, villains, range_pct, rng_custom, iters=iters)
+            act = "N/A"
             ev_fold = ev_call = ev_raise = 0
             extra = {}
         else:
-            act, ev_fold, ev_call, ev_raise, extra = decide_bets(eq, pot, bet, stack, pref)
+            eq, hist = equity(hero, board, villains, range_pct, rng_custom, iters=iters, weighted=weighted_rng, multiprocess=multiproc)
+            if mode == "Strict":
+                act = strict_action(eq)
+                ev_fold = ev_call = ev_raise = 0
+                extra = {}
+            else:
+                act, ev_fold, ev_call, ev_raise, extra = decide_bets(eq, pot, bet, stack, pref)
+
 
     # ── show results --------------------------------------------------------
     col1, col2 = st.columns(2)
@@ -186,3 +189,25 @@ if screen == "Simulation" and submit:
 
 if screen == "Training":
     st.header("Training mode")
+    if "score" not in st.session_state:
+        st.session_state.score = {"correct": 0, "total": 0}
+    if st.button("New Question") or "hero_q" not in st.session_state:
+        name = random.choice(list(PRESET_SCENARIOS.keys()))
+        hero_q, board_q = PRESET_SCENARIOS[name]
+        st.session_state.hero_q = hero_q
+        st.session_state.board_q = board_q
+        st.session_state.vill_q = 1
+    st.write(f"**Hero:** {st.session_state.hero_q}  **Board:** {st.session_state.board_q}")
+    choice = st.radio("Your action?", ["RAISE", "CHECK", "FOLD"], key="train_choice")
+    if st.button("Submit Answer"):
+        hero = cards(st.session_state.hero_q)
+        board = cards(st.session_state.board_q)
+        eq, _ = equity(hero, board, st.session_state.vill_q, show_progress=False)
+        correct = strict_action(eq)
+        st.session_state.score["total"] += 1
+        if choice == correct:
+            st.success("Correct!")
+            st.session_state.score["correct"] += 1
+        else:
+            st.error(f"Wrong. Best action: {correct}")
+    st.write(f"Score: {st.session_state.score['correct']} / {st.session_state.score['total']}")
