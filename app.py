@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 import json
 import random
+import eval7
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -192,10 +193,11 @@ if screen == "Training":
     if "score" not in st.session_state:
         st.session_state.score = {"correct": 0, "total": 0}
     if st.button("New Question") or "hero_q" not in st.session_state:
-        name = random.choice(list(PRESET_SCENARIOS.keys()))
-        hero_q, board_q = PRESET_SCENARIOS[name]
-        st.session_state.hero_q = hero_q
-        st.session_state.board_q = board_q
+        deck = eval7.Deck(); deck.shuffle()
+        hero_cards = deck.deal(2)
+        board_cards = deck.deal(3)
+        st.session_state.hero_q = "".join(str(c) for c in hero_cards)
+        st.session_state.board_q = "".join(str(c) for c in board_cards)
         st.session_state.vill_q = 1
     st.write(f"**Hero:** {st.session_state.hero_q}  **Board:** {st.session_state.board_q}")
     choice = st.radio("Your action?", ["RAISE", "CHECK", "FOLD"], key="train_choice")
