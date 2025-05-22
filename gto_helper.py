@@ -44,6 +44,12 @@ DEFAULTS_PATH = Path.home() / ".gto_defaults.json"
 # default strict-mode thresholds (can be overridden in defaults file)
 STRICT_THRESH = {"raise": 0.65, "check": 0.4}
 
+# solver accuracy presets
+ACCURACY_ITERS = {"Fast": 10000, "Balanced": 25000, "Detailed": 100000}
+
+# available games
+GAMES = ["Holdem", "Short Deck"]
+
 def load_defaults():
     if DEFAULTS_PATH.exists():
         try:
@@ -63,7 +69,9 @@ def save_defaults(d):
         existing.update(d)
         existing["strict_raise"] = STRICT_THRESH["raise"]
         existing["strict_check"] = STRICT_THRESH["check"]
-        DEFAULTS_PATH.write_text(json.dumps(existing))
+        DEFAULTS_PATH.write_text(
+            json.dumps(existing, indent=2)
+        )
     except Exception:
         pass
 
@@ -179,6 +187,16 @@ def load_weighted_range(path_or_file):
         raise ValueError("No valid weighted combos in file")
     return data
 
+def deck_for_game(game: str) -> eval7.Deck:
+    """Return a deck for the given game type."""
+    deck = eval7.Deck()
+    if game.lower().startswith("short"):
+        for r in "2345":
+            for s in SUITS:
+                card = eval7.Card(r + s)
+                deck.cards.remove(card)
+    return deck
+
 PRESET_SCENARIOS = {
     "flush_draw": ("AhKh", "QhTh2c"),
     "set_vs_draw": ("9c9d", "JdTd9h"),
@@ -186,10 +204,12 @@ PRESET_SCENARIOS = {
 
 # ── equity simulation ─────────────────────────────────
 
-def _simulate(hero, board, villains, rng, weighted, iters):
+def _simulate(hero, board, villains, rng, weighted, iters, game):
     wins, buckets = 0.0, Counter()
     for _ in range(iters):
-        deck = eval7.Deck(); [deck.cards.remove(c) for c in hero + board]; deck.shuffle()
+        deck = deck_for_game(game)
+        [deck.cards.remove(c) for c in hero + board]
+        deck.shuffle()
         opp = []
         while len(opp) < villains:
             a, b = deck.deal(2)
@@ -221,7 +241,7 @@ def _simulate(hero, board, villains, rng, weighted, iters):
     return wins, buckets
 
 
-def equity(hero, board, villains, pct=None, custom=None, iters=25000, weighted=None, multiprocess=False, show_progress=False):
+def equity(hero, board, villains, pct=None, custom=None, iters=25000, weighted=None, multiprocess=False, show_progress=False, game="Holdem"):
     """Simulate equity.
 
     pct    -- top X percent of hands to keep (ignored if ``custom`` provided)
@@ -237,6 +257,7 @@ def equity(hero, board, villains, pct=None, custom=None, iters=25000, weighted=N
         villains,
         pct if custom is None else tuple(sorted(custom)),
         iters,
+        game,
     )
     if key in CACHE:
         return CACHE[key]
@@ -247,10 +268,10 @@ def equity(hero, board, villains, pct=None, custom=None, iters=25000, weighted=N
             chunk = iters // procs
             todo = [chunk + (1 if i < iters % procs else 0) for i in range(procs)]
             with mp.Pool(procs) as pool:
-                args = [(hero, board, villains, rng, weighted, n) for n in todo]
+                args = [(hero, board, villains, rng, weighted, n, game) for n in todo]
                 results = pool.starmap(_simulate, args)
         except Exception:
-            results = [_simulate(hero, board, villains, rng, weighted, iters)]
+            results = [_simulate(hero, board, villains, rng, weighted, iters, game)]
     else:
         if show_progress:
             try:
@@ -260,11 +281,11 @@ def equity(hero, board, villains, pct=None, custom=None, iters=25000, weighted=N
                 rng_iter = range(iters)
             wins, buckets = 0.0, Counter()
             for _ in rng_iter:
-                w, b = _simulate(hero, board, villains, rng, weighted, 1)
+                w, b = _simulate(hero, board, villains, rng, weighted, 1, game)
                 wins += w; buckets.update(b)
             results = [(wins, buckets)]
         else:
-            results = [_simulate(hero, board, villains, rng, weighted, iters)]
+            results = [_simulate(hero, board, villains, rng, weighted, iters, game)]
     wins, buckets = 0.0, Counter()
     for w, b in results:
         wins += w; buckets.update(b)
@@ -282,9 +303,9 @@ def strict_action(eq):
         else "CHECK" if eq >= STRICT_THRESH["check"] else "FOLD"
     )
 
-def equilibrium_solver(hero, board, villains, pct=None, custom=None, iters=10000):
+def equilibrium_solver(hero, board, villains, pct=None, custom=None, iters=10000, game="Holdem"):
     """Very naive equilibrium solver using equity as proxy."""
-    eq, _ = equity(hero, board, villains, pct, custom, iters=iters)
+    eq, _ = equity(hero, board, villains, pct, custom, iters=iters, game=game)
     bet = round(min(max(eq, 0.0), 1.0), 2)
     check = round(1 - bet, 2)
     return {"bet_freq": bet, "check_freq": check}
@@ -355,6 +376,12 @@ def play():
             villains = int(v_in) if v_in.strip() else int(defaults.get("villains", 2))
             if not 1 <= villains <= 9:
                 raise ValueError("Opponents must be between 1 and 9")
+            game = input(f"Game type Holdem/Short [{defaults.get('game','Holdem')}]: ").strip().title() or defaults.get('game','Holdem')
+            if game not in GAMES:
+                raise ValueError("Invalid game type")
+            acc = input(f"Solver accuracy Fast/Balanced/Detailed [{defaults.get('accuracy','Balanced')}]: ").strip().title() or defaults.get('accuracy','Balanced')
+            if acc not in ACCURACY_ITERS:
+                raise ValueError("Invalid accuracy option")
             rng_pct = float(defaults.get("range", 0))
             rng_custom = None
             r_in = str(rng_pct)
@@ -369,7 +396,7 @@ def play():
                 else:
                     rng_pct = float(r_in)
             if input("Save as defaults? [y/N]: ").lower().startswith('y'):
-                save_defaults({"villains": villains, "range": r_in})
+                save_defaults({"villains": villains, "range": r_in, "game": game, "accuracy": acc})
             break
         except ValueError as e:
             print(color(f"Error: {e}", "red") + "\n")
@@ -398,12 +425,21 @@ def play():
                 if len(board) not in (0, 3, 4, 5):
                     raise ValueError("Board must be 0, 3, 4, or 5 cards")
             mode = input("Mode strict/bets [s/b]: ").lower().strip()
+            iters = ACCURACY_ITERS[acc]
             if mode.startswith('b'):
                 pot, bet, stack, pref = prompt_bets()
                 mode = "bets"
+                eq, hist = equity(hero, board, villains, rng_pct, rng_custom, iters=iters, game=game)
             else:
                 mode = "strict"
-                eq, hist = equity(hero, board, villains, rng_pct, rng_custom)
+                sr = input(f"Strict raise threshold [{STRICT_THRESH['raise']}] : ") or str(STRICT_THRESH['raise'])
+                sc = input(f"Strict check threshold [{STRICT_THRESH['check']}] : ") or str(STRICT_THRESH['check'])
+                try:
+                    STRICT_THRESH['raise'] = float(sr)
+                    STRICT_THRESH['check'] = float(sc)
+                except ValueError:
+                    print("Bad threshold values, using defaults")
+                eq, hist = equity(hero, board, villains, rng_pct, rng_custom, iters=iters, game=game)
         except ValueError as e:
             print(f"Error: {e}. Restarting current hand.\n")
             hero = board = None
@@ -446,6 +482,7 @@ def run_simulation_from_args(args):
     hero = cards(args.hero)
     board = cards(args.board) if args.board else []
     villains = args.villains or 2
+    d = load_defaults()
     if args.v_range:
         if Path(args.v_range).exists():
             rng_pct = None
@@ -454,9 +491,15 @@ def run_simulation_from_args(args):
             rng_pct = float(args.v_range)
             rng_custom = None
     else:
-        d = load_defaults()
         rng_pct = float(d.get("range", 0))
         rng_custom = None
+        if args.mode == "strict":
+            STRICT_THRESH["raise"] = float(args.strict_raise if args.strict_raise is not None else d.get("strict_raise", STRICT_THRESH["raise"]))
+            STRICT_THRESH["check"] = float(args.strict_check if args.strict_check is not None else d.get("strict_check", STRICT_THRESH["check"]))
+
+    game = getattr(args, "game", d.get("game", "Holdem"))
+    acc = getattr(args, "accuracy", d.get("accuracy", "Balanced"))
+    iters = args.iters or ACCURACY_ITERS.get(acc, 25000)
 
     eq, hist = equity(
         hero,
@@ -464,9 +507,10 @@ def run_simulation_from_args(args):
         villains,
         rng_pct,
         rng_custom,
-        iters=args.iters,
+        iters=iters,
         multiprocess=args.multiprocess,
         show_progress=True,
+        game=game,
     )
 
     if args.mode == "strict":
@@ -498,7 +542,11 @@ if __name__ == "__main__":
     parser.add_argument("--bet", type=float, default=0.0)
     parser.add_argument("--stack", type=float, default=0.0)
     parser.add_argument("--raise-size", default="1", choices=list(RAISE_SIZES.keys()))
-    parser.add_argument("--iters", type=int, default=25000)
+    parser.add_argument("--iters", type=int)
+    parser.add_argument("--game", choices=GAMES, default=None)
+    parser.add_argument("--accuracy", choices=list(ACCURACY_ITERS.keys()), default=None)
+    parser.add_argument("--strict-raise", type=float)
+    parser.add_argument("--strict-check", type=float)
     parser.add_argument("--multiprocess", action="store_true")
     parser.add_argument("--batch")
     parser.add_argument("--interactive", action="store_true")

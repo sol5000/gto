@@ -1,0 +1,9 @@
+{
+  "instructions": "Edit values and copy to ~/.gto_defaults.json to set defaults",
+  "villains": 2,
+  "range": 0,
+  "game": "Holdem",
+  "accuracy": "Balanced",
+  "strict_raise": 0.65,
+  "strict_check": 0.4
+}
