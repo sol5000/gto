@@ -14,6 +14,9 @@ interface and an interactive GUI, keeping a CSV history of your sessions.
 - Streamlit GUI with card pickers, real‑time validation and Plotly histogram.
 - Mode selector (Basic/Advanced/Equilibrium). Advanced adds adjustable iterations,
   weighted ranges, multiprocessing and extra charts. Equilibrium runs a simple solver.
+- Toggle between Hold'em and Short‑Deck.
+- Solver accuracy presets (Fast/Balanced/Detailed) controlling iteration count.
+- Editable strict‑mode thresholds and persistent defaults in `~/.gto_defaults.json`.
 
 ## Requirements
 
