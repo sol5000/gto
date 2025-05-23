@@ -14,6 +14,31 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+st.set_page_config(page_title="QuickGTO", layout="wide")
+
+if "css_injected" not in st.session_state:        # run only on first render
+    st.markdown(
+        """
+        <style>
+        /*  Title bar  */
+        #banner{font-size:2.6rem;font-weight:700;border:none;}
+
+        /*  Sticky footer action-bar  */
+        #footer{
+            position:fixed;bottom:0;left:0;right:0;
+            background:#222;padding:0.6rem 1rem;z-index:999;
+            box-shadow:0 -2px 6px rgba(0,0,0,.4);
+        }
+        #footer .stButton>button{
+            width:100%!important;height:3rem;
+            border-radius:6px;font-size:1rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.session_state["css_injected"] = True
+
 from gto_helper import (
     cards,
     equity,
@@ -38,6 +63,9 @@ CARD_CODES = [r + s for r in RANKS for s in SUITS]
 def label(code):
     return f"{code[0]}{SUIT_EMOJI[code[1]]}"
 
+if "score" not in st.session_state:
+    # use dict-style assignment; it’s always safe
+    st.session_state["score"] = {"correct": 0, "total": 0}
 st.markdown(
     """
     <style>
@@ -254,6 +282,28 @@ if screen == "Simulation" and submit:
     if Path("gto_history.csv").exists():
         st.download_button("Download session CSV", open("gto_history.csv","rb").read(),"gto_history.csv")
 
+<<<<<<< Updated upstream
+=======
+with st.container():
+    st.markdown("<div id='footer'>", unsafe_allow_html=True)
+
+    col_run, col_undo, col_redo = st.columns(3, gap="medium")
+    with col_run:
+        run_click  = st.button("▶ Run Simulation", key="run_footer",
+                               use_container_width=True)
+    with col_undo:
+        undo_click = st.button("↺ Undo", key="undo",
+                               use_container_width=True)
+    with col_redo:
+        redo_click = st.button("↻ Redo", key="redo",
+                               use_container_width=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+if run_click:
+    submit = True
+
+>>>>>>> Stashed changes
 if screen == "Training":
     st.header("Training mode")
     if "score" not in st.session_state:
