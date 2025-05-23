@@ -51,6 +51,11 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# ── history for undo/redo ─────────────────────────────────────────────────--
+if "history" not in st.session_state:
+    st.session_state.history = []
+    st.session_state.future = []
+
 # ── sidebar form ────────────────────────────────────────────────────────────
 screen = st.sidebar.radio("Screen", ["Simulation", "Training"], key="screen")
 example_choice = st.sidebar.selectbox("Example", list(PRESET_SCENARIOS.keys()), key="ex_select")
@@ -105,7 +110,7 @@ with st.sidebar.form("config"):
             strict_check = st.number_input("Check threshold", 0.0, 1.0, strict_check, 0.05, help=">= equity to check")
     else:
         mode = "Equilibrium"
-    submit = st.form_submit_button("Run simulation")
+    submit_sidebar = st.form_submit_button("Run simulation")
 
 # ── helper to merge text / picker input -------------------------------------
 
@@ -123,8 +128,44 @@ def merge_inputs(text: str, picks: list[str]):
         return "".join(raw_codes)
     return ""
 
+
+with st.container():
+    st.markdown("""<div id='footer'>""", unsafe_allow_html=True)
+    c1, c2, c3 = st.columns(3)
+    run_click = c1.button("Run Simulation", key="run_footer")
+    undo_click = c2.button("Undo", key="undo")
+    redo_click = c3.button("Redo", key="redo")
+    st.markdown("""</div>""", unsafe_allow_html=True)
+
+# combine submit signals from sidebar and footer
+submit = submit_sidebar or run_click
+
+# handle undo/redo actions
+if undo_click and st.session_state.history:
+    state = st.session_state.history.pop()
+    st.session_state.future.append({
+        "hero_text": st.session_state.hero_text,
+        "board_text": st.session_state.board_text,
+    })
+    st.session_state.hero_text = state["hero_text"]
+    st.session_state.board_text = state["board_text"]
+
+if redo_click and st.session_state.future:
+    state = st.session_state.future.pop()
+    st.session_state.history.append({
+        "hero_text": st.session_state.hero_text,
+        "board_text": st.session_state.board_text,
+    })
+    st.session_state.hero_text = state["hero_text"]
+    st.session_state.board_text = state["board_text"]
+
 # ── run simulation if submitted --------------------------------------------
 if screen == "Simulation" and submit:
+    st.session_state.history.append({
+        "hero_text": st.session_state.hero_text,
+        "board_text": st.session_state.board_text,
+    })
+    st.session_state.future.clear()
     hero_raw  = merge_inputs(hero_text, hero_pick)
     board_raw = merge_inputs(board_text, board_pick)
 
@@ -174,7 +215,6 @@ if screen == "Simulation" and submit:
             else:
                 act, ev_fold, ev_call, ev_raise, extra = decide_bets(eq, pot, bet, stack, pref)
 
-
     # ── show results --------------------------------------------------------
     prog.progress(1)
     col1, col2 = st.columns(2)
@@ -213,17 +253,6 @@ if screen == "Simulation" and submit:
     # CSV download
     if Path("gto_history.csv").exists():
         st.download_button("Download session CSV", open("gto_history.csv","rb").read(),"gto_history.csv")
-
-with st.container():
-    st.markdown("""<div id='footer'>""", unsafe_allow_html=True)
-    c1, c2, c3 = st.columns(3)
-    run_click = c1.button("Run Simulation", key="run_footer")
-    undo_click = c2.button("Undo", key="undo")
-    redo_click = c3.button("Redo", key="redo")
-    st.markdown("""</div>""", unsafe_allow_html=True)
-
-if run_click:
-    submit = True
 
 if screen == "Training":
     st.header("Training mode")
