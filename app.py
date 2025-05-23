@@ -158,12 +158,20 @@ def merge_inputs(text: str, picks: list[str]):
 
 
 with st.container():
-    st.markdown("""<div id='footer'>""", unsafe_allow_html=True)
-    c1, c2, c3 = st.columns(3)
-    run_click = c1.button("Run Simulation", key="run_footer")
-    undo_click = c2.button("Undo", key="undo")
-    redo_click = c3.button("Redo", key="redo")
-    st.markdown("""</div>""", unsafe_allow_html=True)
+    st.markdown("<div id='footer'>", unsafe_allow_html=True)
+
+    col_run, col_undo, col_redo = st.columns(3, gap="medium")
+    with col_run:
+        run_click  = st.button("\u25B6 Run Simulation", key="run_footer",
+                               use_container_width=True)
+    with col_undo:
+        undo_click = st.button("\u21BA Undo", key="undo",
+                               use_container_width=True)
+    with col_redo:
+        redo_click = st.button("\u21BB Redo", key="redo",
+                               use_container_width=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # combine submit signals from sidebar and footer
 submit = submit_sidebar or run_click
@@ -281,26 +289,6 @@ if screen == "Simulation" and submit:
     # CSV download
     if Path("gto_history.csv").exists():
         st.download_button("Download session CSV", open("gto_history.csv","rb").read(),"gto_history.csv")
-
-
-with st.container():
-    st.markdown("<div id='footer'>", unsafe_allow_html=True)
-
-    col_run, col_undo, col_redo = st.columns(3, gap="medium")
-    with col_run:
-        run_click  = st.button("▶ Run Simulation", key="run_footer",
-                               use_container_width=True)
-    with col_undo:
-        undo_click = st.button("↺ Undo", key="undo",
-                               use_container_width=True)
-    with col_redo:
-        redo_click = st.button("↻ Redo", key="redo",
-                               use_container_width=True)
-
-    st.markdown("</div>", unsafe_allow_html=True)
-    
-if run_click:
-    submit = True
 
 if screen == "Training":
     st.header("Training mode")
