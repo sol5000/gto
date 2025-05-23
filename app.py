@@ -53,6 +53,7 @@ from gto_helper import (
     load_weighted_range,
     equilibrium_solver,
     PRESET_SCENARIOS,
+    top_range,
 )
 
 # ── card utilities ──────────────────────────────────────────────────────────
@@ -62,6 +63,24 @@ CARD_CODES = [r + s for r in RANKS for s in SUITS]
 
 def label(code):
     return f"{code[0]}{SUIT_EMOJI[code[1]]}"
+
+def build_range_heatmap(rng_set):
+    """Return dataframe for 13x13 heat map given a set of combos."""
+    matrix = []
+    ranks = list(RANKS)[::-1]
+    for r1 in ranks:
+        row = []
+        for r2 in ranks:
+            if r1 == r2:
+                key = (r1, r2, False)
+            elif ranks.index(r1) < ranks.index(r2):
+                key = (r2, r1, True)
+            else:
+                key = (r1, r2, False)
+            row.append(1 if key in rng_set else 0)
+        matrix.append(row)
+    df = pd.DataFrame(matrix, index=ranks, columns=ranks)
+    return df
 
 if "score" not in st.session_state:
     # use dict-style assignment; it’s always safe
@@ -88,6 +107,8 @@ if "history" not in st.session_state:
 screen = st.sidebar.radio("Screen", ["Simulation", "Training"], key="screen")
 example_choice = st.sidebar.selectbox("Example", list(PRESET_SCENARIOS.keys()), key="ex_select")
 ui_level = st.sidebar.radio("Mode", ["Basic", "Advanced", "Equilibrium"], key="ui_level")
+pack_data = json.load(open("strategy_packs.json")) if Path("strategy_packs.json").exists() else {}
+pack_choice = st.sidebar.selectbox("Strategy pack", ["None"] + list(pack_data.keys()), key="pack_select")
 
 def load_example():
     hero_raw, board_raw = PRESET_SCENARIOS[example_choice]
@@ -97,6 +118,9 @@ def load_example():
 
 if st.sidebar.button("Load example scenario"):
     load_example()
+if st.sidebar.button("Load strategy pack") and pack_choice != "None":
+    st.session_state.strategy_pack = pack_data.get(pack_choice)
+    st.toast(f"Loaded strategy pack '{pack_choice}'")
 
 with st.sidebar.form("config"):
     st.header("GTO Helper settings")
@@ -267,6 +291,25 @@ if screen == "Simulation" and submit:
             df["cum"] = df["freq"].cumsum()
             fig2 = px.line(df, x="bucket", y="cum", title="Cumulative equity")
             st.plotly_chart(fig2, use_container_width=True)
+            rng_set = rng_custom if rng_custom is not None else top_range(range_pct)
+            heat_df = build_range_heatmap(rng_set)
+            fig_h = px.imshow(heat_df, color_continuous_scale=["white", "red"], aspect="auto", title="Range heat map")
+            st.plotly_chart(fig_h, use_container_width=True)
+            streets = ["Pre", "Flop", "Turn", "River"]
+            boards = [[], board[:3], board[:4], board[:5]]
+            eqs = []
+            for b in boards:
+                e, _ = equity(hero, b, villains, range_pct, rng_custom, iters=max(iters//5,1000), game=game_type)
+                eqs.append(e)
+            df_e = pd.DataFrame({"street": streets, "equity": eqs})
+            fig_e = px.line(df_e, x="street", y="equity", markers=True, title="Equity by street")
+            st.plotly_chart(fig_e, use_container_width=True)
+        if "strategy_pack" in st.session_state:
+            st.subheader("Strategy pack")
+            pack_chart = st.session_state.strategy_pack.get("chart", {})
+            if pack_chart:
+                df_pack = pd.DataFrame(list(pack_chart.items()), columns=["Hand", "Action"])
+                st.dataframe(df_pack)
 
     # tooltips for transparency
     st.help(strict_action)
@@ -294,27 +337,38 @@ if screen == "Training":
     st.header("Training mode")
     if "score" not in st.session_state:
         st.session_state.score = {"correct": 0, "total": 0}
+    if "train_history" not in st.session_state:
+        st.session_state.train_history = []
+    diff = st.selectbox("Difficulty", ["Easy", "Normal", "Pro"], key="train_diff")
     if st.button("New Question") or "hero_q" not in st.session_state:
         deck = eval7.Deck(); deck.shuffle()
         hero_cards = deck.deal(2)
         board_cards = deck.deal(3)
         st.session_state.hero_q = "".join(str(c) for c in hero_cards)
         st.session_state.board_q = "".join(str(c) for c in board_cards)
-        st.session_state.vill_q = 1
+        st.session_state.vill_q = 1 if diff == "Easy" else 2
+        st.session_state.range_q = 50 if diff == "Easy" else (20 if diff == "Normal" else 10)
     st.write(f"**Hero:** {st.session_state.hero_q}  **Board:** {st.session_state.board_q}")
     choice = st.radio("Your action?", ["RAISE", "CHECK", "FOLD"], key="train_choice")
     if st.button("Submit Answer"):
         hero = cards(st.session_state.hero_q)
         board = cards(st.session_state.board_q)
-        eq, _ = equity(hero, board, st.session_state.vill_q, show_progress=False)
+        eq, _ = equity(hero, board, st.session_state.vill_q, st.session_state.range_q, show_progress=False)
         correct = strict_action(eq)
         st.session_state.score["total"] += 1
+        st.session_state.train_history.append(1 if choice == correct else 0)
         if choice == correct:
             st.success("Correct!")
             st.session_state.score["correct"] += 1
         else:
             st.error(f"Wrong. Best action: {correct}")
-st.write(f"Score: {st.session_state.score['correct']} / {st.session_state.score['total']}")
+    st.write(f"Score: {st.session_state.score['correct']} / {st.session_state.score['total']}")
+    if st.session_state.train_history:
+        df = pd.DataFrame({"q": list(range(1, len(st.session_state.train_history)+1)),
+                           "result": st.session_state.train_history})
+        df["acc"] = df["result"].expanding().mean()
+        fig = px.line(df, x="q", y="acc", range_y=[0,1], title="Training accuracy")
+        st.plotly_chart(fig, use_container_width=True)
 
 st.markdown(
     """
