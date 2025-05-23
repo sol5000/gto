@@ -1,0 +1,10 @@
+{
+  "default_push_fold": {
+    "description": "Sample 10bb push/fold table",
+    "chart": {
+      "AA": "push",
+      "KK": "push",
+      "QTs": "fold"
+    }
+  }
+}
