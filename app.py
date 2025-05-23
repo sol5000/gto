@@ -282,8 +282,7 @@ if screen == "Simulation" and submit:
     if Path("gto_history.csv").exists():
         st.download_button("Download session CSV", open("gto_history.csv","rb").read(),"gto_history.csv")
 
-<<<<<<< Updated upstream
-=======
+
 with st.container():
     st.markdown("<div id='footer'>", unsafe_allow_html=True)
 
@@ -303,7 +302,6 @@ with st.container():
 if run_click:
     submit = True
 
->>>>>>> Stashed changes
 if screen == "Training":
     st.header("Training mode")
     if "score" not in st.session_state:
