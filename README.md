@@ -18,6 +18,19 @@ interface and an interactive GUI, keeping a CSV history of your sessions.
 - Solver accuracy presets (Fast/Balanced/Detailed) controlling iteration count.
 - Editable strict‑mode thresholds and persistent defaults in `~/.gto_defaults.json`.
 
+### Pack 2 – Training & visual analytics
+
+- **Training difficulty levels** – Easy, Normal and Pro modes with score history
+  tracking and a performance graph.
+- **Range-matrix heat maps** – 13×13 grids plus extra charts when using Advanced
+  mode.
+- **Animated equity graphs** – real-time plots that show equity by street.
+- **Pre-flop strategy packs & push/fold charts** – one-click import of common
+  solutions.
+- **Range grids** – colour-coded layouts for both pre- and post-flop ranges.
+- **Library of common spots** – BTN vs BB, SB limp and other setups for instant
+  loading.
+
 ## Requirements
 
 - Python 3 with `pip` available.
