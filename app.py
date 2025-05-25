@@ -207,8 +207,9 @@ if undo_click and st.session_state.history:
         "hero_text": st.session_state.hero_text,
         "board_text": st.session_state.board_text,
     })
-    st.session_state.hero_text = state["hero_text"]
-    st.session_state.board_text = state["board_text"]
+    # use dict-style assignment to avoid widget update errors
+    st.session_state["hero_text"] = state["hero_text"]
+    st.session_state["board_text"] = state["board_text"]
 
 if redo_click and st.session_state.future:
     state = st.session_state.future.pop()
@@ -216,8 +217,8 @@ if redo_click and st.session_state.future:
         "hero_text": st.session_state.hero_text,
         "board_text": st.session_state.board_text,
     })
-    st.session_state.hero_text = state["hero_text"]
-    st.session_state.board_text = state["board_text"]
+    st.session_state["hero_text"] = state["hero_text"]
+    st.session_state["board_text"] = state["board_text"]
 
 # ── run simulation if submitted --------------------------------------------
 if screen == "Simulation" and submit:
