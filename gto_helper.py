@@ -200,7 +200,7 @@ def deck_for_game(game: str) -> eval7.Deck:
 PRESET_SCENARIOS = {
     "flush_draw": ("AhKh", "QhTh2c"),
     "set_vs_draw": ("9c9d", "JdTd9h"),
-    "btn_vs_bb": ("AhKd", ""),
+    "btn_vs_bb": ("AhKd", ""),  # Empty string represents scenarios with no board
     "sb_limp_pot": ("7s6s", ""),
 }
 
