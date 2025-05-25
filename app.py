@@ -287,14 +287,16 @@ if screen == "Simulation" and submit:
         df = pd.DataFrame({"bucket": [f"{i*10}-{(i+1)*10}%" for i in range(10)], "freq": hist})
         fig = px.bar(df, x="bucket", y="freq", title="Equity distribution", labels={"bucket":"Equity %","freq":"Frequency"})
         st.plotly_chart(fig, use_container_width=True)
+        
         if ui_level == "Advanced":
+            # Create additional graphs for Advanced mode
             df["cum"] = df["freq"].cumsum()
             fig2 = px.line(df, x="bucket", y="cum", title="Cumulative equity")
-            st.plotly_chart(fig2, use_container_width=True)
+            
             rng_set = rng_custom if rng_custom is not None else top_range(range_pct)
             heat_df = build_range_heatmap(rng_set)
             fig_h = px.imshow(heat_df, color_continuous_scale=["white", "red"], aspect="auto", title="Range heat map")
-            st.plotly_chart(fig_h, use_container_width=True)
+            
             streets = ["Pre", "Flop", "Turn", "River"]
             boards = [[], board[:3], board[:4], board[:5]]
             eqs = []
@@ -303,7 +305,17 @@ if screen == "Simulation" and submit:
                 eqs.append(e)
             df_e = pd.DataFrame({"street": streets, "equity": eqs})
             fig_e = px.line(df_e, x="street", y="equity", markers=True, title="Equity by street")
-            st.plotly_chart(fig_e, use_container_width=True)
+            
+            # Display the additional 3 graphs in a responsive grid layout
+            st.markdown("---")  # Add a visual separator
+            graph_col1, graph_col2 = st.columns(2)
+            
+            with graph_col1:
+                st.plotly_chart(fig2, use_container_width=True)
+                st.plotly_chart(fig_e, use_container_width=True)
+            
+            with graph_col2:
+                st.plotly_chart(fig_h, use_container_width=True)
         if "strategy_pack" in st.session_state:
             st.subheader("Strategy pack")
             pack_chart = st.session_state.strategy_pack.get("chart", {})
