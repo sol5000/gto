@@ -65,23 +65,35 @@ if "show_intro" not in st.session_state:
     st.session_state["show_intro"] = not defaults.get("intro_seen", False)
 
 def show_intro(d):
-    """Display welcome screen using a modal if available."""
+    """Display a glassmorphic welcome screen allowing preference setup."""
     css = """
     <style>
-    div[data-testid="stModal"]{background:rgba(255,255,255,0.15)!important;
-        backdrop-filter:blur(6px);}
-    div[data-testid="stModal"] > div{background:rgba(255,255,255,0.3)!important;
-        backdrop-filter:blur(15px);padding:2rem;border-radius:16px;
-        box-shadow:0 4px 30px rgba(0,0,0,0.1);width:90%;max-width:600px;}
+    div[data-testid="stModal"]{background:rgba(255,255,255,0.1)!important;
+        backdrop-filter:blur(4px);}
+    div[data-testid="stModal"] > div{background:rgba(255,255,255,0.25)!important;
+        backdrop-filter:blur(20px);padding:2rem;border-radius:16px;
+        box-shadow:0 4px 30px rgba(0,0,0,0.2);width:90%;max-width:600px;
+        animation:fadeInUp 0.6s ease;}
+    @keyframes fadeInUp{from{opacity:0;transform:translateY(40px);}to{opacity:1;transform:none;}}
     </style>
     """
+
+    features = [
+        "Monte Carlo equity simulations",
+        "Training mode with score tracking",
+        "Equilibrium solver",
+        "Strategy pack support",
+    ]
 
     if hasattr(st, "modal"):
         st.markdown(css, unsafe_allow_html=True)
         with st.modal("Welcome to QuickGTO 🎉"):
-            st.write(
-                "QuickGTO analyses poker spots with Monte Carlo simulations. Configure your default preferences below."
-            )
+            st.write("QuickGTO analyses poker spots with Monte Carlo simulations.")
+            st.markdown("**Key features**")
+            for f in features:
+                st.markdown(f"- {f}")
+            st.markdown("---")
+            st.write("Configure your default preferences below.")
             v = st.slider("Default opponents", 1, 9, int(d.get("villains", 2)), key="intro_villains")
             r = st.slider("Default villain range %", 0, 50, int(d.get("range", 0)), key="intro_range")
             g = st.selectbox(
