@@ -54,7 +54,73 @@ from gto_helper import (
     equilibrium_solver,
     PRESET_SCENARIOS,
     top_range,
+    load_defaults,
+    save_defaults,
 )
+
+def _safe_rerun():
+    """Rerun the app, supporting older Streamlit versions."""
+    try:
+        if hasattr(st, "experimental_rerun"):
+            st.experimental_rerun()
+        elif hasattr(st, "rerun"):
+            st.rerun()
+    except Exception:
+        pass
+
+# ── load defaults and intro handling ───────────────────────────────────────
+defaults = load_defaults()
+
+if "show_intro" not in st.session_state:
+    st.session_state["show_intro"] = not defaults.get("intro_seen", False)
+
+def show_intro(d):
+    st.markdown(
+        """
+        <style>
+        #intro-overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+            background:rgba(255,255,255,0.15);backdrop-filter:blur(6px);z-index:10000;
+            animation:fadeIn 0.5s ease forwards;}
+        #intro-card{background:rgba(255,255,255,0.3);backdrop-filter:blur(15px);
+            padding:2rem;border-radius:16px;box-shadow:0 4px 30px rgba(0,0,0,0.1);
+            width:90%;max-width:600px;animation:slideDown 0.5s ease forwards;}
+        @keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
+        @keyframes slideDown{from{transform:translateY(-20px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+        </style>
+        <div id='intro-overlay'>
+        <div id='intro-card'>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown("## Welcome to QuickGTO 🎉")
+    st.write("QuickGTO analyses poker spots with Monte Carlo simulations. Configure your default preferences below.")
+    with st.form("intro_form"):
+        v = st.slider("Default opponents", 1, 9, int(d.get("villains", 2)))
+        r = st.slider("Default villain range %", 0, 50, int(d.get("range", 0)))
+        g = st.selectbox("Default game", ["Holdem", "Short Deck"],
+                         index=0 if d.get("game", "Holdem") == "Holdem" else 1)
+        a = st.selectbox("Default solver accuracy", ["Fast","Balanced","Detailed"],
+                         index=["Fast","Balanced","Detailed"].index(d.get("accuracy", "Balanced")))
+        sr = st.number_input("Default raise threshold", 0.0, 1.0, float(d.get("strict_raise", 0.65)), 0.05)
+        sc = st.number_input("Default check threshold", 0.0, 1.0, float(d.get("strict_check", 0.4)), 0.05)
+        submitted = st.form_submit_button("Save preferences and start")
+    if submitted:
+        save_defaults({
+            "villains": v,
+            "range": r,
+            "game": g,
+            "accuracy": a,
+            "strict_raise": sr,
+            "strict_check": sc,
+            "intro_seen": True,
+        })
+        st.session_state.show_intro = False
+        _safe_rerun()
+    st.markdown("</div></div>", unsafe_allow_html=True)
+
+if st.session_state.get("show_intro"):
+    show_intro(defaults)
+    st.stop()
 
 # ── card utilities ──────────────────────────────────────────────────────────
 SUIT_EMOJI = {"s": "♠", "h": "♥", "d": "♦", "c": "♣"}
@@ -135,10 +201,10 @@ with st.sidebar.form("config"):
     board_text = st.text_input("Quick board entry (e.g. 7c8d9s)", key="board_text")
     board_pick = st.multiselect("Board picker (0–5)", [label(c) for c in CARD_CODES], max_selections=5)
 
-    villains   = st.slider("Opponents", 2, 9, 3, help="Number of villains")
-    range_pct  = st.slider("Villain range %", 0, 50, 0, help="Top percent of hands")
-    game_type = st.selectbox("Game", ["Holdem", "Short Deck"], help="Choose deck type")
-    accuracy = st.selectbox("Solver accuracy", ["Fast","Balanced","Detailed"], index=1, help="Iteration preset")
+    villains   = st.slider("Opponents", 2, 9, int(defaults.get("villains", 2)), help="Number of villains")
+    range_pct  = st.slider("Villain range %", 0, 50, int(defaults.get("range", 0)), help="Top percent of hands")
+    game_type = st.selectbox("Game", ["Holdem", "Short Deck"], index=0 if defaults.get("game", "Holdem") == "Holdem" else 1, help="Choose deck type")
+    accuracy = st.selectbox("Solver accuracy", ["Fast","Balanced","Detailed"], index=["Fast","Balanced","Detailed"].index(defaults.get("accuracy", "Balanced")), help="Iteration preset")
     range_file = st.file_uploader("Custom range file", type="txt")
     weighted_file = None
     iters = 25000
