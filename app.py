@@ -58,6 +58,16 @@ from gto_helper import (
     save_defaults,
 )
 
+def _safe_rerun():
+    """Rerun the app, supporting older Streamlit versions."""
+    try:
+        if hasattr(st, "experimental_rerun"):
+            st.experimental_rerun()
+        elif hasattr(st, "rerun"):
+            st.rerun()
+    except Exception:
+        pass
+
 # ── load defaults and intro handling ───────────────────────────────────────
 defaults = load_defaults()
 
@@ -177,6 +187,7 @@ def show_intro(d):
             )
             st.session_state.show_intro = False
             st.experimental_rerun()
+
 
 
 if st.session_state.get("show_intro"):
