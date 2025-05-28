@@ -155,6 +155,7 @@ def show_intro(d):
             st.session_state.show_intro = False
             st.experimental_rerun()
 
+
 if st.session_state.get("show_intro"):
     show_intro(defaults)
     st.stop()
