@@ -58,6 +58,16 @@ from gto_helper import (
     save_defaults,
 )
 
+def _safe_rerun():
+    """Rerun the app, supporting older Streamlit versions."""
+    try:
+        if hasattr(st, "experimental_rerun"):
+            st.experimental_rerun()
+        elif hasattr(st, "rerun"):
+            st.rerun()
+    except Exception:
+        pass
+
 # ── load defaults and intro handling ───────────────────────────────────────
 defaults = load_defaults()
 
@@ -65,107 +75,48 @@ if "show_intro" not in st.session_state:
     st.session_state["show_intro"] = not defaults.get("intro_seen", False)
 
 def show_intro(d):
-    """Display a glassmorphic welcome screen allowing preference setup."""
-    css = """
-    <style>
-    div[data-testid="stModal"]{background:rgba(255,255,255,0.1)!important;
-        backdrop-filter:blur(4px);}
-    div[data-testid="stModal"] > div{background:rgba(255,255,255,0.25)!important;
-        backdrop-filter:blur(20px);padding:2rem;border-radius:16px;
-        box-shadow:0 4px 30px rgba(0,0,0,0.2);width:90%;max-width:600px;
-        animation:fadeInUp 0.6s ease;}
-    @keyframes fadeInUp{from{opacity:0;transform:translateY(40px);}to{opacity:1;transform:none;}}
-    </style>
-    """
-
-    features = [
-        "Monte Carlo equity simulations",
-        "Training mode with score tracking",
-        "Equilibrium solver",
-        "Strategy pack support",
-    ]
-
-    if hasattr(st, "modal"):
-        st.markdown(css, unsafe_allow_html=True)
-        with st.modal("Welcome to QuickGTO 🎉"):
-            st.write("QuickGTO analyses poker spots with Monte Carlo simulations.")
-            st.markdown("**Key features**")
-            for f in features:
-                st.markdown(f"- {f}")
-            st.markdown("---")
-            st.write("Configure your default preferences below.")
-            v = st.slider("Default opponents", 1, 9, int(d.get("villains", 2)), key="intro_villains")
-            r = st.slider("Default villain range %", 0, 50, int(d.get("range", 0)), key="intro_range")
-            g = st.selectbox(
-                "Default game", ["Holdem", "Short Deck"],
-                index=0 if d.get("game", "Holdem") == "Holdem" else 1,
-                key="intro_game"
-            )
-            a = st.selectbox(
-                "Default solver accuracy", ["Fast", "Balanced", "Detailed"],
-                index=["Fast", "Balanced", "Detailed"].index(d.get("accuracy", "Balanced")),
-                key="intro_acc"
-            )
-            sr = st.number_input(
-                "Default raise threshold", 0.0, 1.0, float(d.get("strict_raise", 0.65)), 0.05,
-                key="intro_sr"
-            )
-            sc = st.number_input(
-                "Default check threshold", 0.0, 1.0, float(d.get("strict_check", 0.4)), 0.05,
-                key="intro_sc"
-            )
-            if st.button("Save preferences and start", key="intro_submit"):
-                save_defaults(
-                    {
-                        "villains": v,
-                        "range": r,
-                        "game": g,
-                        "accuracy": a,
-                        "strict_raise": sr,
-                        "strict_check": sc,
-                        "intro_seen": True,
-                    }
-                )
-                st.session_state.show_intro = False
-                st.experimental_rerun()
-    else:
-        # basic fallback without modal
-        st.write("## Welcome to QuickGTO 🎉")
-        st.write(
-            "QuickGTO analyses poker spots with Monte Carlo simulations. Configure your default preferences below."
-        )
-        with st.form("intro_form"):
-            v = st.slider("Default opponents", 1, 9, int(d.get("villains", 2)))
-            r = st.slider("Default villain range %", 0, 50, int(d.get("range", 0)))
-            g = st.selectbox(
-                "Default game", ["Holdem", "Short Deck"],
-                index=0 if d.get("game", "Holdem") == "Holdem" else 1,
-            )
-            a = st.selectbox(
-                "Default solver accuracy", ["Fast", "Balanced", "Detailed"],
-                index=["Fast", "Balanced", "Detailed"].index(d.get("accuracy", "Balanced")),
-            )
-            sr = st.number_input(
-                "Default raise threshold", 0.0, 1.0, float(d.get("strict_raise", 0.65)), 0.05
-            )
-            sc = st.number_input(
-                "Default check threshold", 0.0, 1.0, float(d.get("strict_check", 0.4)), 0.05
-            )
-            submitted = st.form_submit_button("Save preferences and start")
-        if submitted:
-            save_defaults(
-                {
-                    "villains": v,
-                    "range": r,
-                    "game": g,
-                    "accuracy": a,
-                    "strict_raise": sr,
-                    "strict_check": sc,
-                    "intro_seen": True,
-                }
-            )
-            st.session_state.show_intro = False
-            st.experimental_rerun()
+    st.markdown(
+        """
+        <style>
+        #intro-overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+            background:rgba(255,255,255,0.15);backdrop-filter:blur(6px);z-index:10000;
+            animation:fadeIn 0.5s ease forwards;}
+        #intro-card{background:rgba(255,255,255,0.3);backdrop-filter:blur(15px);
+            padding:2rem;border-radius:16px;box-shadow:0 4px 30px rgba(0,0,0,0.1);
+            width:90%;max-width:600px;animation:slideDown 0.5s ease forwards;}
+        @keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
+        @keyframes slideDown{from{transform:translateY(-20px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+        </style>
+        <div id='intro-overlay'>
+        <div id='intro-card'>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown("## Welcome to QuickGTO 🎉")
+    st.write("QuickGTO analyses poker spots with Monte Carlo simulations. Configure your default preferences below.")
+    with st.form("intro_form"):
+        v = st.slider("Default opponents", 1, 9, int(d.get("villains", 2)))
+        r = st.slider("Default villain range %", 0, 50, int(d.get("range", 0)))
+        g = st.selectbox("Default game", ["Holdem", "Short Deck"],
+                         index=0 if d.get("game", "Holdem") == "Holdem" else 1)
+        a = st.selectbox("Default solver accuracy", ["Fast","Balanced","Detailed"],
+                         index=["Fast","Balanced","Detailed"].index(d.get("accuracy", "Balanced")))
+        sr = st.number_input("Default raise threshold", 0.0, 1.0, float(d.get("strict_raise", 0.65)), 0.05)
+        sc = st.number_input("Default check threshold", 0.0, 1.0, float(d.get("strict_check", 0.4)), 0.05)
+        submitted = st.form_submit_button("Save preferences and start")
+    if submitted:
+        save_defaults({
+            "villains": v,
+            "range": r,
+            "game": g,
+            "accuracy": a,
+            "strict_raise": sr,
+            "strict_check": sc,
+            "intro_seen": True,
+        })
+        st.session_state.show_intro = False
+        _safe_rerun()
+    st.markdown("</div></div>", unsafe_allow_html=True)
 
 
 if st.session_state.get("show_intro"):
