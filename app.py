@@ -118,6 +118,7 @@ def show_intro(d):
         _safe_rerun()
     st.markdown("</div></div>", unsafe_allow_html=True)
 
+
 if st.session_state.get("show_intro"):
     show_intro(defaults)
     st.stop()
