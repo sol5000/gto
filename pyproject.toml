@@ -1,0 +1,31 @@
+[project]
+name = "gto"
+version = "0.1.0"
+description = "QuickGTO: poker decision tool with Monte Carlo equity simulations"
+requires-python = ">=3.9"
+
+dependencies = [
+    "Cython",
+    "streamlit",
+    "numpy",
+    "plotly",
+    "eval7",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+# Tell uv where to get eval7
+[tool.uv.sources]
+eval7 = { git = "https://github.com/julianandrews/pyeval7.git" }
+
+# Tell uv what to preinstall in eval7's isolated build env
+[tool.uv.extra-build-dependencies]
+eval7 = ["Cython"]
