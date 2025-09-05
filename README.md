@@ -28,13 +28,20 @@ interface and an interactive GUI, keeping a CSV history of your sessions.
 - **Pre-flop strategy packs & push/fold charts** – one-click import of common
   solutions.
 - **Range grids** – colour-coded layouts for both pre- and post-flop ranges.
-- **Library of common spots** – BTN vs BB, SB limp and other setups for instant
+- **Library of common spots** – BTN vs BB, SB limp and other setups for instant
   loading.
 
 ## Requirements
 
-- Python 3 with `pip` available.
-- Libraries: `cython`, `streamlit`, `eval7`, `numpy`, `plotly`.
+Using [uv](https://github.com/astral-sh/uv) (recommended — fast Python package manager)
+Can also use `pip install uv`
+
+Install dependencies from pyproject.toml
+`uv sync`
+
+Run the application
+`uv run streamlit run app.py`
+
 
 ### Install Python and pip
 
@@ -118,4 +125,3 @@ simple solver demonstration.
   displayed.
 
 Both modes log results to `gto_history.csv` for later review.
-
