@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [tool.uv.extra-build-dependencies]
-    eval7 = ["Cython"]
+eval7 = ["Cython"]
 
 [build-system]
 requires = ["hatchling"]
