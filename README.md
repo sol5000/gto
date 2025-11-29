@@ -119,3 +119,4 @@ simple solver demonstration.
 
 Both modes log results to `gto_history.csv` for later review.
 
+• CC BY-NC-SA 4.0 https://creativecommons.org/licenses/by-nc-sa/4.0/
